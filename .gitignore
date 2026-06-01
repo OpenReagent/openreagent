@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Local pool / extracted signatures (the shipped pool stays under pool/)
+pool/local/
+*.local.json
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Solc binaries downloaded by py-solc-x
+.solcx/

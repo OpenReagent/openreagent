@@ -1,0 +1,24 @@
+{
+  "id": "sig-amm-spot-price",
+  "recipe": { "name": "canonical-divergence", "version": "1.0.0" },
+  "value": {
+    "slots": {
+      "operation": "amm_spot_price_read",
+      "site": { "function": "getPrice", "file": "PriceOracle.sol" },
+      "canonical_reference": "uniswap_v2/twap"
+    },
+    "freeform": null
+  },
+  "provenance": [
+    {
+      "source_kind": "audit_report",
+      "source_ref": "sample/H-05",
+      "extracted_by": {
+        "recipe": "canonical-divergence",
+        "version": "1.0.0",
+        "timestamp": "2026-05-10T00:00:00Z"
+      },
+      "reviewer": "sample"
+    }
+  ]
+}

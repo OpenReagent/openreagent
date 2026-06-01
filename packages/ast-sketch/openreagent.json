@@ -1,0 +1,9 @@
+{
+  "name": "ast-sketch",
+  "version": "1.0.0",
+  "kind": "bundle",
+  "entry": "detector.py",
+  "requires": [],
+  "description": "Self-contained near-duplicate detector: registers the ast-sketch shape and recipe.",
+  "provides": { "recipes": ["ast-sketch"], "shapes": ["ast-sketch"] }
+}

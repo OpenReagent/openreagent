@@ -1,0 +1,37 @@
+OpenReagent
+Copyright 2026 The OpenReagent contributors
+
+This product includes software developed by the OpenReagent contributors.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not
+use the files in this project except in compliance with the License. A copy
+of the License is provided in the LICENSE file and may also be obtained at:
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+------------------------------------------------------------------------------
+Third-party dependencies
+------------------------------------------------------------------------------
+
+OpenReagent depends, at runtime, on the following libraries. Each is the
+property of its respective authors and is distributed under its own license.
+These libraries are not redistributed as part of this source tree; they are
+declared as dependencies and installed separately.
+
+Core (always required):
+  - pydantic            MIT License
+  - typer               MIT License
+  - rich                MIT License
+
+Optional extras (installed only when the corresponding feature is used):
+  - py-solc-x           MIT License        (extra: bytecode)
+  - eth-hash            MIT License        (extra: bytecode)
+  - datasketch          MIT License        (extra: sketch)
+  - anthropic           MIT License        (extra: extract)
+
+Dependency-license note (not legal advice): OpenReagent deliberately avoids
+linking, at import time, against any copyleft-licensed analysis framework so
+that the Apache-2.0 license of this package is unencumbered. Where a more
+capable but differently licensed tool would help, integrate it at arm's length
+(as a separate process) rather than importing it into this package. See
+docs/architecture.md for the rationale.

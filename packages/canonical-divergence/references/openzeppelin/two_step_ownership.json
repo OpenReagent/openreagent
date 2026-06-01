@@ -1,0 +1,12 @@
+{
+  "reference_id": "openzeppelin/ownable2step",
+  "name": "OpenZeppelin Ownable2Step transfer",
+  "category": "access_control",
+  "description": "A safe ownership transfer is two-step: transferOwnership records a pendingOwner, and the new owner must acceptOwnership. A one-step transfer that assigns the owner directly diverges from this reference.",
+  "site_match": {
+    "name_patterns": ["transferOwnership*", "*[Oo]wnership*"],
+    "body_match_tokens": ["pendingOwner", "acceptOwnership", "_transferOwnership"]
+  },
+  "required_markers": ["pendingowner"],
+  "forbidden_markers": []
+}

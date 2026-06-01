@@ -1,0 +1,9 @@
+{
+  "name": "generic-slot",
+  "version": "1.0.0",
+  "kind": "recipe",
+  "entry": "detector.py",
+  "requires": ["slot-spec"],
+  "description": "Unclassified fallback for an expressible finding that fits no specific detector.",
+  "provides": { "recipes": ["generic-slot"], "shapes": [] }
+}

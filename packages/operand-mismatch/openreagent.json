@@ -1,0 +1,9 @@
+{
+  "name": "operand-mismatch",
+  "version": "1.0.0",
+  "kind": "recipe",
+  "entry": "detector.py",
+  "requires": ["slot-spec"],
+  "description": "Flags an operation that reads the wrong operand attribute.",
+  "provides": { "recipes": ["operand-mismatch"], "shapes": [] }
+}

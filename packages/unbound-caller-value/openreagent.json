@@ -1,0 +1,9 @@
+{
+  "name": "unbound-caller-value",
+  "version": "1.0.0",
+  "kind": "recipe",
+  "entry": "detector.py",
+  "requires": ["slot-spec"],
+  "description": "Flags a caller-supplied value used without a binding check.",
+  "provides": { "recipes": ["unbound-caller-value"], "shapes": [] }
+}

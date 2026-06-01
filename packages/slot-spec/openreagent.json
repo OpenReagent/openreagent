@@ -1,0 +1,9 @@
+{
+  "name": "slot-spec",
+  "version": "1.0.0",
+  "kind": "shape",
+  "entry": "shape.py",
+  "requires": [],
+  "description": "Shared slot-spec value shape for slot-based detectors.",
+  "provides": { "shapes": ["slot-spec"], "recipes": [] }
+}

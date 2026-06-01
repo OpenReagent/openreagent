@@ -1,0 +1,79 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "openreagent"
+version = "0.1.0"
+description = "A recipe-based framework for specifying and matching recurring smart-contract vulnerabilities."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "The OpenReagent contributors" }]
+keywords = ["solidity", "security", "vulnerability", "signature", "static-analysis"]
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+]
+
+# Core dependencies are intentionally small. Everything on the scan path is
+# deterministic and dependency-light; heavier libraries used by individual
+# recipes or by the extract path are optional extras (see below).
+dependencies = [
+    "pydantic>=2.5",
+    "typer>=0.12",
+    "rich>=13.0",
+]
+
+[project.optional-dependencies]
+# Recipes that compile or hash bytecode (e.g. bytecode-hash).
+bytecode = ["py-solc-x>=2.0", "eth-hash[pycryptodome]>=0.6"]
+# Recipes that build AST sketches (e.g. ast-sketch).
+sketch = ["datasketch>=1.6"]
+# The extract path may call an LLM. Never imported by the scan path.
+extract = ["anthropic>=0.39"]
+# Everything an integrator might want.
+all = [
+    "py-solc-x>=2.0",
+    "eth-hash[pycryptodome]>=0.6",
+    "datasketch>=1.6",
+    "anthropic>=0.39",
+]
+dev = ["pytest>=7.4"]
+
+[project.scripts]
+openreagent = "openreagent.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/openreagent/openreagent"
+Documentation = "https://github.com/openreagent/openreagent/tree/main/docs"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/openreagent"]
+
+# The authoritative package and pool definitions live at the repository root
+# (see docs/architecture.md). They are bundled into the wheel so an installed
+# copy of OpenReagent can resolve them without a source checkout. Each package
+# carries its own assets (e.g. a recipe's references) inside its directory.
+[tool.hatch.build.targets.wheel.force-include]
+"packages" = "openreagent/_data/packages"
+"pool" = "openreagent/_data/pool"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/openreagent",
+    "packages",
+    "pool",
+    "docs",
+    "tests",
+    "README.md",
+    "LICENSE",
+    "NOTICE",
+    "CONTRIBUTING.md",
+    "CODE_OF_CONDUCT.md",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
