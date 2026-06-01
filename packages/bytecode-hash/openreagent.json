@@ -1,0 +1,9 @@
+{
+  "name": "bytecode-hash",
+  "version": "1.0.0",
+  "kind": "bundle",
+  "entry": "detector.py",
+  "requires": [],
+  "description": "Self-contained clone detector: registers the bytecode-hash shape and recipe.",
+  "provides": { "recipes": ["bytecode-hash"], "shapes": ["bytecode-hash"] }
+}

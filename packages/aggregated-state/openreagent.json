@@ -1,0 +1,9 @@
+{
+  "name": "aggregated-state",
+  "version": "1.0.0",
+  "kind": "recipe",
+  "entry": "detector.py",
+  "requires": ["slot-spec"],
+  "description": "Flags aggregate state kept inconsistent with keyed state.",
+  "provides": { "recipes": ["aggregated-state"], "shapes": [] }
+}

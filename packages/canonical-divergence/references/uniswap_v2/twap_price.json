@@ -1,0 +1,12 @@
+{
+  "reference_id": "uniswap_v2/twap",
+  "name": "Uniswap V2 time-weighted average price",
+  "category": "oracle",
+  "description": "A manipulation-resistant price read uses the cumulative price accumulators (price0CumulativeLast / price1CumulativeLast) sampled over time, not an instantaneous reserves ratio.",
+  "site_match": {
+    "name_patterns": ["getPrice*", "*[Pp]rice*", "*[Oo]racle*", "consult*"],
+    "body_match_tokens": ["getReserves", "price0CumulativeLast", "price1CumulativeLast"]
+  },
+  "required_markers": ["price0cumulativelast"],
+  "forbidden_markers": []
+}
