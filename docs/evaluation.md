@@ -49,9 +49,3 @@ is not established."
 Because scan output is byte-identical for fixed inputs, an evaluation is fully
 reproducible from the recorded triple (recipe version, pool, target commit). A
 reviewer can re-run your scan and get exactly your findings before re-labelling.
-
-## What to put in public docs
-
-Maturity status (`production`, `experimental`, `journey`) and the methodology
-above — not numbers. The status of a recipe reflects how much review it has had,
-which is a judgement, not a measurement.

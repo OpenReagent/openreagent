@@ -138,6 +138,8 @@ This repository publishes no precision, recall, or CI figures; see
 
 - Contributing: [CONTRIBUTING.md](CONTRIBUTING.md).
 - Code of conduct: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+- Direction and open design questions: [docs/roadmap.md](docs/roadmap.md) and
+  [docs/open-questions.md](docs/open-questions.md).
 - OpenReagent is developed in the open under the Linux Foundation Decentralized
   Trust (LFDT). Working-group, chat, and recording links are on the project's
   LFDT page. *(Fill these in for your deployment.)*

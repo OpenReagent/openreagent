@@ -178,22 +178,6 @@ findings under two recipe versions.
 
 ---
 
-## Repository layout this schema implies
-
-```
-docs/schema.md       Part A, the record (rarely changes)
-packages/            Part B — one directory per package (shape or recipe),
-                     each self-contained, with a recipe's references bundled inside it
-pool/                signature records (empty by default + a few samples)
-docs/conventions.md  detector adjacency, guidance for extractor authors
-docs/packages.md     the package registry: manifest, install sources, resolution
-docs/storage.md      the local SQLite signature store and remote pull
-docs/extending.md    how to author and publish a package
-docs/open-questions.md  FN estimation, pool distribution, catalog completeness
-```
-
----
-
 ## Status
 
 Draft v0. Versioning follows the schema, not the tool.

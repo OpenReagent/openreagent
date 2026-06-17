@@ -130,14 +130,3 @@ register_recipe(Recipe(
 `load()` imports packages in dependency order; registration is the import side
 effect. Built-ins ship in the wheel under `openreagent/_data/packages`; installed
 packages live under `$OPENREAGENT_HOME`. See [extending.md](extending.md).
-
-## Dependency and licensing note (not legal advice)
-
-The scan path is intentionally dependency-light and links against no
-copyleft-licensed analysis framework at import time, so this package's Apache-2.0
-license stays unencumbered. A more capable but differently licensed tool (for
-example, a full Solidity IR framework) should be integrated **at arm's length** —
-invoked as a separate process by a recipe that declares it in its own extra —
-rather than imported into this package. The built-in slot recipes are designed to
-work on the lexical Solidity view in `solidity.py` precisely so that the core
-needs nothing heavier.
