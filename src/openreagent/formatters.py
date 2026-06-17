@@ -71,6 +71,18 @@ def to_sarif(report: ScanReport) -> str:
     return json.dumps(doc, indent=2, sort_keys=True)
 
 
+def _framework_line(target: dict) -> str:
+    """A single deterministic line describing the detected build framework."""
+    if target.get("ambiguous"):
+        names = ", ".join(target.get("detected", []))
+        return (
+            f"Detected framework: ambiguous — {names} "
+            f"(pass `--framework` to choose). Project root: {target.get('project_root')}."
+        )
+    fw = target.get("framework") or "vanilla"
+    return f"Detected framework: {fw}. Project root: {target.get('project_root')}."
+
+
 def to_markdown(report: ScanReport) -> str:
     lines: list[str] = []
     lines.append("# OpenReagent scan findings")
@@ -80,6 +92,9 @@ def to_markdown(report: ScanReport) -> str:
         f"{report.pool_size} signature(s) using "
         f"{len(report.enabled_recipes)} enabled recipe(s)."
     )
+    if report.target:
+        lines.append("")
+        lines.append(_framework_line(report.target))
     lines.append("")
     if not report.findings:
         lines.append("No findings.")

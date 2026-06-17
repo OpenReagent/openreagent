@@ -60,15 +60,24 @@ def scan(
     enable: List[str] = typer.Option([], "--enable", "-e", help="Enable a recipe by name ('*' for all)."),
     disable: List[str] = typer.Option([], "--disable", "-d", help="Disable a recipe by name."),
     recipe_dir: List[str] = typer.Option([], "--recipe-dir", help="Load extra packages from a directory."),
+    framework: Optional[str] = typer.Option(None, "--framework", help="Override build-framework detection: foundry | hardhat | vanilla."),
     output: Optional[str] = typer.Option(None, "--output", "-o", help="Write to a file instead of stdout."),
 ):
     """Scan code against the pool. Deterministic; never calls an LLM."""
     from openreagent.formatters import format_report
+    from openreagent.frameworks import Framework
     from openreagent.scan import scan as run_scan
+
+    if framework is not None:
+        try:
+            Framework(framework.lower().strip())
+        except ValueError:
+            err.print(f"[red]unknown framework[/red] {framework!r}; expected foundry | hardhat | vanilla")
+            raise typer.Exit(code=1)
 
     store = store_db if store_db else (True if use_store else None)
     report = run_scan(path, pool=pool, enable=list(enable), disable=list(disable),
-                      recipe_dirs=list(recipe_dir), store=store)
+                      recipe_dirs=list(recipe_dir), store=store, framework=framework)
     text = format_report(report, fmt)
     if output:
         Path(output).write_text(text + "\n", encoding="utf-8")
@@ -110,6 +119,72 @@ def extract(
         err.print(f"[green]Added {sig.id} to the store[/green]")
     if not output and not to_store:
         print(json.dumps(sig.to_dict(), indent=2, sort_keys=True))
+
+
+# ---------------------------------------------------------------------------
+# framework detection
+# ---------------------------------------------------------------------------
+
+@app.command()
+def detect(
+    path: str = typer.Argument(..., help="A .sol file or a project/Solidity directory."),
+    framework: Optional[str] = typer.Option(None, "--framework", help="Override: foundry | hardhat | vanilla."),
+    as_json: bool = typer.Option(False, "--json", help="Emit JSON instead of a table."),
+):
+    """Detect a target's build framework (Foundry / Hardhat / Vanilla).
+
+    Deterministic and performs no build. If both Foundry and Hardhat manifests are
+    present, the result is ambiguous: choose one with ``--framework``, or answer
+    the prompt when running interactively.
+    """
+    import sys
+
+    from openreagent.frameworks import Framework, detect as detect_fw
+
+    det = detect_fw(path)
+    info = det.to_dict()
+
+    chosen: Optional[Framework] = None
+    if framework is not None:
+        try:
+            chosen = Framework(framework.lower().strip())
+        except ValueError:
+            err.print(f"[red]unknown framework[/red] {framework!r}; expected foundry | hardhat | vanilla")
+            raise typer.Exit(code=1)
+    elif det.framework is not None:
+        chosen = det.framework
+    elif not as_json and sys.stdin.isatty():
+        options = [f.value for f in det.frameworks]
+        answer = typer.prompt(
+            f"Multiple frameworks detected ({', '.join(options)}). Choose one",
+            default=options[0],
+        )
+        try:
+            chosen = Framework(answer.lower().strip())
+        except ValueError:
+            err.print(f"[red]unknown framework[/red] {answer!r}")
+            raise typer.Exit(code=1)
+
+    info["resolved"] = chosen.value if chosen else None
+
+    if as_json:
+        print(json.dumps(info, indent=2, sort_keys=True))
+        return
+
+    table = Table(title="OpenReagent framework detection")
+    table.add_column("Field", style="bold")
+    table.add_column("Value")
+    table.add_row("target", det.target)
+    table.add_row("project root", det.project_root)
+    table.add_row("detected", ", ".join(info["detected"]))
+    table.add_row("ambiguous", "yes" if det.ambiguous else "no")
+    table.add_row("resolved", info["resolved"] or "[unresolved]")
+    console.print(table)
+    for m in det.manifests:
+        console.print(f"[dim]{m.framework.value}[/dim] {m.path}")
+    if det.ambiguous and chosen is None:
+        err.print("[yellow]ambiguous:[/yellow] pass --framework foundry|hardhat|vanilla to choose")
+        raise typer.Exit(code=1)
 
 
 # ---------------------------------------------------------------------------

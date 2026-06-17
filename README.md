@@ -118,6 +118,7 @@ record. Each detector is its own recipe over a shared shape — the recipe ident
 | command | what it does |
 |---------|--------------|
 | `scan <path>` | load pool/store, run matchers, emit findings (deterministic, no LLM) |
+| `detect <path>` | report the target's build framework — Foundry / Hardhat / Vanilla (no build) |
 | `extract <finding>` | one audit finding → one signature record (offline; may use an LLM) |
 | `install <source>` | install a detector/shape package (dir, zip, url, `github:owner/repo`) |
 | `uninstall <name>` | remove an installed package |

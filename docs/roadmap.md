@@ -24,7 +24,8 @@ those artifacts to matchers. Heavier toolchains run **at arm's length**, behind
 optional extras, so a plain source scan still runs anywhere.
 
 - **Framework detection** — Foundry (`foundry.toml`), Hardhat (`hardhat.config.*`),
-  or vanilla `.sol`; deterministic, no build.
+  or vanilla `.sol`; deterministic, no build (see [frameworks.md](frameworks.md)).
+  *TODO: Truffle / Brownie fall back to vanilla for now.*
 - **Automatic build** — `forge build` / `hardhat compile` / `solc` (vanilla);
   degrades gracefully when a tool or extra is absent.
 - **Artifact-fed recipes** — carry bytecode and AST alongside the source view so

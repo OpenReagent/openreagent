@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from openreagent import loader
+from openreagent.frameworks import Framework, detect as detect_framework
 from openreagent.pool import PoolEntry, load_pool
 from openreagent.recipes import Finding, Recipe, all_recipes, get_recipe
 from openreagent.solidity import SourceFile, load_target
@@ -29,10 +30,12 @@ class ScanReport:
     pool_size: int
     files_scanned: int
     skipped: list[dict] = field(default_factory=list)
+    target: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
             "tool": {"name": "openreagent", "rules": sorted(self.enabled_recipes)},
+            "target": self.target,
             "summary": {
                 "pool_size": self.pool_size,
                 "files_scanned": self.files_scanned,
@@ -65,6 +68,25 @@ def enabled_recipe_set(enable: list[str] | None = None,
     return active
 
 
+def _describe_target(target: str | Path, framework: str | None) -> dict:
+    """Detect the target's build framework and describe it for the report.
+
+    Detection is deterministic and performs no build (see ``frameworks.py``). An
+    explicit ``framework`` override wins; otherwise the single detected framework
+    is reported, and an ambiguous layout is reported as such with no guess.
+    """
+    detection = detect_framework(target)
+    info = detection.to_dict()
+    if framework:
+        info["framework"] = Framework(framework.lower().strip()).value
+        info["resolved_by"] = "override"
+    elif detection.framework is not None:
+        info["resolved_by"] = "detected"
+    else:
+        info["resolved_by"] = "ambiguous"  # framework stays null until a choice is made
+    return info
+
+
 def scan(
     target: str | Path,
     pool: str | Path | None = None,
@@ -72,11 +94,13 @@ def scan(
     disable: list[str] | None = None,
     recipe_dirs: list[str] | None = None,
     store=None,
+    framework: str | None = None,
 ) -> ScanReport:
     loader.load_builtins()
     for d in recipe_dirs or []:
         loader.load_extra_dir(d)
 
+    target_info = _describe_target(target, framework)
     sources: list[SourceFile] = load_target(target)
     active = enabled_recipe_set(enable, disable)
 
@@ -113,4 +137,5 @@ def scan(
         pool_size=len(entries),
         files_scanned=len(sources),
         skipped=skipped,
+        target=target_info,
     )
