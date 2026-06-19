@@ -154,7 +154,7 @@ def test_cli_detect_bad_framework():
 # ---- CLI: scan surfaces detection ----
 
 def test_cli_scan_json_reports_framework():
-    result = runner.invoke(app, ["scan", str(FOUNDRY), "--format", "json"])
+    result = runner.invoke(app, ["scan", str(FOUNDRY), "--no-build", "--format", "json"])
     assert result.exit_code == 0
     data = json.loads(result.stdout)
     assert data["target"]["framework"] == "foundry"
@@ -162,7 +162,7 @@ def test_cli_scan_json_reports_framework():
 
 
 def test_cli_scan_ambiguous_reports_unresolved():
-    result = runner.invoke(app, ["scan", str(BOTH), "--format", "json"])
+    result = runner.invoke(app, ["scan", str(BOTH), "--no-build", "--format", "json"])
     assert result.exit_code == 0
     data = json.loads(result.stdout)
     assert data["target"]["ambiguous"] is True
@@ -171,7 +171,7 @@ def test_cli_scan_ambiguous_reports_unresolved():
 
 
 def test_cli_scan_framework_override():
-    result = runner.invoke(app, ["scan", str(BOTH), "--framework", "hardhat", "--format", "json"])
+    result = runner.invoke(app, ["scan", str(BOTH), "--framework", "hardhat", "--no-build", "--format", "json"])
     assert result.exit_code == 0
     data = json.loads(result.stdout)
     assert data["target"]["framework"] == "hardhat"

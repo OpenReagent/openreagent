@@ -1,0 +1,8 @@
+{
+  "name": "hardhat-build-app",
+  "version": "1.0.0",
+  "description": "A minimal, buildable Hardhat fixture (JS config) for build E2E.",
+  "devDependencies": {
+    "hardhat": "^2.22.0"
+  }
+}

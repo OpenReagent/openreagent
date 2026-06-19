@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from openreagent import loader
+from openreagent.building import BuildResult, build as build_target
 from openreagent.frameworks import Framework, detect as detect_framework
 from openreagent.pool import PoolEntry, load_pool
 from openreagent.recipes import Finding, Recipe, all_recipes, get_recipe
@@ -31,6 +32,10 @@ class ScanReport:
     files_scanned: int
     skipped: list[dict] = field(default_factory=list)
     target: dict = field(default_factory=dict)
+    # The full build artifacts (bytecode / AST) for downstream recipe use. Held
+    # on the report but not serialized by ``to_dict`` (only a compact summary,
+    # under ``target['build']``, is). Consumed by the artifact-fed recipe path.
+    build: BuildResult | None = field(default=None, repr=False)
 
     def to_dict(self) -> dict:
         return {
@@ -68,23 +73,29 @@ def enabled_recipe_set(enable: list[str] | None = None,
     return active
 
 
-def _describe_target(target: str | Path, framework: str | None) -> dict:
-    """Detect the target's build framework and describe it for the report.
+def _describe_target(target: str | Path, framework: str | None, do_build: bool, install: bool):
+    """Detect the target's framework, build it, and describe both for the report.
 
     Detection is deterministic and performs no build (see ``frameworks.py``). An
     explicit ``framework`` override wins; otherwise the single detected framework
-    is reported, and an ambiguous layout is reported as such with no guess.
+    is used, and an ambiguous layout is left unresolved (no guess). The build runs
+    at arm's length and is best-effort: a missing toolchain or a failure degrades
+    gracefully (see ``building.py``). Returns ``(info_dict, build_result)``.
     """
     detection = detect_framework(target)
+    resolved = Framework(framework.lower().strip()) if framework else detection.framework
     info = detection.to_dict()
     if framework:
-        info["framework"] = Framework(framework.lower().strip()).value
+        info["framework"] = resolved.value
         info["resolved_by"] = "override"
     elif detection.framework is not None:
         info["resolved_by"] = "detected"
     else:
         info["resolved_by"] = "ambiguous"  # framework stays null until a choice is made
-    return info
+
+    build_result = build_target(detection, resolved, enabled=do_build, install=install)
+    info["build"] = build_result.summary()
+    return info, build_result
 
 
 def scan(
@@ -95,12 +106,14 @@ def scan(
     recipe_dirs: list[str] | None = None,
     store=None,
     framework: str | None = None,
+    do_build: bool = True,
+    install_toolchain: bool = False,
 ) -> ScanReport:
     loader.load_builtins()
     for d in recipe_dirs or []:
         loader.load_extra_dir(d)
 
-    target_info = _describe_target(target, framework)
+    target_info, build_result = _describe_target(target, framework, do_build, install_toolchain)
     sources: list[SourceFile] = load_target(target)
     active = enabled_recipe_set(enable, disable)
 
@@ -138,4 +151,5 @@ def scan(
         files_scanned=len(sources),
         skipped=skipped,
         target=target_info,
+        build=build_result,
     )

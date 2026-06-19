@@ -61,6 +61,9 @@ def scan(
     disable: List[str] = typer.Option([], "--disable", "-d", help="Disable a recipe by name."),
     recipe_dir: List[str] = typer.Option([], "--recipe-dir", help="Load extra packages from a directory."),
     framework: Optional[str] = typer.Option(None, "--framework", help="Override build-framework detection: foundry | hardhat | vanilla."),
+    no_build: bool = typer.Option(False, "--no-build", help="Skip the automatic build; scan the lexical source view only."),
+    install: bool = typer.Option(False, "--install/--no-install", help="Allow auto-installing solc / node deps during the build (off by default; keeps scans offline)."),
+    debug: bool = typer.Option(False, "--debug", help="Print the build's raw toolchain output / error to stderr."),
     output: Optional[str] = typer.Option(None, "--output", "-o", help="Write to a file instead of stdout."),
 ):
     """Scan code against the pool. Deterministic; never calls an LLM."""
@@ -77,7 +80,14 @@ def scan(
 
     store = store_db if store_db else (True if use_store else None)
     report = run_scan(path, pool=pool, enable=list(enable), disable=list(disable),
-                      recipe_dirs=list(recipe_dir), store=store, framework=framework)
+                      recipe_dirs=list(recipe_dir), store=store, framework=framework,
+                      do_build=not no_build, install_toolchain=install)
+
+    if debug and report.build is not None:
+        b = report.build
+        err.print(f"[dim]--- build: {b.status.value} ({b.reason or 'ok'}) ---[/dim]")
+        if b.log:
+            err.print(b.log)
     text = format_report(report, fmt)
     if output:
         Path(output).write_text(text + "\n", encoding="utf-8")
@@ -184,6 +194,79 @@ def detect(
         console.print(f"[dim]{m.framework.value}[/dim] {m.path}")
     if det.ambiguous and chosen is None:
         err.print("[yellow]ambiguous:[/yellow] pass --framework foundry|hardhat|vanilla to choose")
+        raise typer.Exit(code=1)
+
+
+@app.command()
+def build(
+    path: str = typer.Argument(..., help="A .sol file or a project/Solidity directory."),
+    framework: Optional[str] = typer.Option(None, "--framework", help="Override: foundry | hardhat | vanilla."),
+    install: bool = typer.Option(True, "--install/--no-install", help="Auto-install a missing solc (vanilla) or node deps (Hardhat)."),
+    as_json: bool = typer.Option(False, "--json", help="Emit JSON instead of a table."),
+    debug: bool = typer.Option(False, "--debug", help="Show the raw toolchain output / error (the build log)."),
+):
+    """Build a target at arm's length (forge / hardhat / solc) and report artifacts.
+
+    Best-effort: a missing toolchain or the absent ``bytecode`` extra is reported
+    as a skip, not an error. An ambiguous layout must be resolved with
+    ``--framework``. By default a missing solc (vanilla) or the project's node
+    dependencies (Hardhat) are installed automatically; use ``--no-install`` to
+    stay offline. Use ``--debug`` to see the underlying compiler output.
+    """
+    from openreagent.building import build as build_target
+    from openreagent.frameworks import Framework, detect as detect_fw
+
+    det = detect_fw(path)
+    resolved: Optional[Framework] = det.framework
+    if framework is not None:
+        try:
+            resolved = Framework(framework.lower().strip())
+        except ValueError:
+            err.print(f"[red]unknown framework[/red] {framework!r}; expected foundry | hardhat | vanilla")
+            raise typer.Exit(code=1)
+
+    result = build_target(det, resolved, enabled=True, install=install)
+    summary = result.summary()
+
+    if as_json:
+        payload = {**summary, "project_root": det.project_root,
+                   "artifacts_detail": [a.to_summary() for a in result.artifacts]}
+        if debug:
+            payload["log"] = result.log
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return
+
+    table = Table(title="OpenReagent build")
+    table.add_column("Field", style="bold")
+    table.add_column("Value")
+    table.add_row("framework", summary["framework"])
+    table.add_row("status", summary["status"])
+    table.add_row("reason", summary["reason"] or "-")
+    table.add_row("compiler", summary["compiler"] or "-")
+    table.add_row("artifacts", str(summary["artifacts"]))
+    table.add_row("project root", det.project_root)
+    console.print(table)
+    for a in result.artifacts:
+        console.print(f"[dim]{a.contract}[/dim] {a.source} "
+                      f"(bytecode {len(a.bytecode)} chars, ast {'yes' if a.ast else 'no'})")
+    if debug and result.log:
+        err.print("[dim]--- toolchain output ---[/dim]")
+        err.print(result.log)
+    _hints = {
+        "bytecode-extra-not-installed": "install the extra: pip install 'openreagent[bytecode]'",
+        "no-solc-installed": "re-run with --install to fetch a matching solc automatically",
+        "no-compatible-solc": "re-run with --install to fetch a matching solc automatically",
+        "solc-install-failed": "solc download failed — check your network, then retry",
+        "hardhat-not-installed": "re-run with --install to bootstrap Hardhat (npm install)",
+        "npm-not-found": "install Node.js/npm to build a Hardhat project",
+        "npm-install-error": "npm install failed — check Node version and the project",
+        "forge-not-found": "install Foundry (https://getfoundry.sh) to build this project",
+    }
+    if summary["reason"] in _hints:
+        err.print(f"[yellow]hint:[/yellow] {_hints[summary['reason']]}")
+    if result.status.value in ("failed",):
+        if not debug:
+            err.print("[yellow]hint:[/yellow] re-run with --debug to see the compiler output")
         raise typer.Exit(code=1)
 
 

@@ -25,3 +25,9 @@ pool/local/
 
 # Solc binaries downloaded by py-solc-x
 .solcx/
+
+# Smart-contract build output (Foundry / Hardhat / solc)
+out/
+artifacts/
+cache/
+node_modules/
