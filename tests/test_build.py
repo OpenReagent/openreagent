@@ -190,6 +190,7 @@ def test_parse_standard_json_extracts_bytecode_and_ast():
             }
         },
     }
+    output["contracts"]["contracts/Counter.sol"]["Counter"]["abi"] = [{"type": "function", "name": "f"}]
     arts = _artifacts_from_standard_json(output)
     assert len(arts) == 1
     a = arts[0]
@@ -197,6 +198,7 @@ def test_parse_standard_json_extracts_bytecode_and_ast():
     assert a.contract == "Counter"
     assert a.bytecode == "608060405234801561"
     assert a.ast["nodeType"] == "SourceUnit"
+    assert a.abi == [{"type": "function", "name": "f"}]
 
 
 def test_parse_standard_json_handles_empty():
@@ -207,7 +209,7 @@ def test_read_foundry_out_parses_artifacts(tmp_path):
     out = tmp_path / "out" / "Counter.sol"
     out.mkdir(parents=True)
     (out / "Counter.json").write_text(json.dumps({
-        "abi": [],
+        "abi": [{"type": "function", "name": "increment"}],
         "bytecode": {"object": "0x6080604052"},
         "metadata": json.dumps({"compiler": {"version": "0.8.19+commit.7dd6d404"}}),
         "ast": {"nodeType": "SourceUnit", "absolutePath": "src/Counter.sol"},
@@ -220,6 +222,7 @@ def test_read_foundry_out_parses_artifacts(tmp_path):
     assert a.source == "src/Counter.sol"   # taken from ast.absolutePath
     assert a.bytecode == "0x6080604052"
     assert a.ast is not None
+    assert a.abi == [{"type": "function", "name": "increment"}]
 
 
 def test_solc_pragmas_extracted():

@@ -29,11 +29,20 @@ experimental and journey recipes are off by default and enabled with
 than as a taxonomy. `bytecode-hash` was effective on exact and near-exact clones
 and `ast-sketch` on lightly modified ones; neither generalized to harder cases.
 
-The built-in `bytecode-hash` matcher compares a **source-text** normalization
-(`strip comments, collapse whitespace`), which needs no compiler. A digest taken
-over compiled **bytecode** can be produced on the extract side with the
-`bytecode` extra, but matching a bytecode digest against source requires a
-compiler and is out of scope for the built-in matcher.
+Both recipes now consume the **unified scan input** (`Code` + `Bytecode` + `AST`
++ `ABI`; see [frameworks.md](frameworks.md)). They prefer real build artifacts
+and fall back to the lexical *Code* view when a target was not built:
+
+- `bytecode-hash` matches a **source-text** normalization with no compiler
+  (lexical fallback), **and** a compiled-**bytecode** digest (creation bytecode)
+  when the target was built. The signature's `normalization` records which.
+- `ast-sketch` shingles a real **AST** (node-type sequence) when one is available
+  and falls back to the lexical **token** stream otherwise. The signature's
+  `basis` (`ast` | `lexical-tokens`) records which; only same-basis signatures
+  compare.
+
+A build is produced automatically (or read from an existing one) per the
+toolchain; without a build these recipes simply use the lexical fallback.
 
 ## Maturity, in words
 

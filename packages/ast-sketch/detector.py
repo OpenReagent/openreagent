@@ -1,15 +1,20 @@
 """Package: ast-sketch/1.0.0  (self-contained shape + recipe)
 
-A near-duplicate detector over a lexical token stream. Registers its own shape
-(``ast-sketch/v1``) and recipe in one entry module. The value is a MinHash
-signature of token n-grams; matching estimates Jaccard similarity and flags files
-above a threshold ``tau``. It is a journey recipe (off by default).
+A near-duplicate detector. The value is a MinHash signature; matching estimates
+Jaccard similarity and flags files above a threshold ``tau``. A journey recipe
+(off by default).
+
+The signature's ``basis`` records what was shingled: ``"ast"`` (a sequence of
+solc AST node types — used when the target was built and an AST is available) or
+``"lexical-tokens"`` (the dependency-free token stream — the fallback). Only
+signatures of the **same basis** are comparable.
 """
 from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from openreagent._hashing import jaccard, minhash, shingle
+from openreagent.matching import ast_for
 from openreagent.recipes import Extractor, Matcher, Recipe, Status, register_recipe
 from openreagent.recipe_lib import make_finding
 from openreagent.shapes import Shape, ShapeRef, register_shape
@@ -29,6 +34,7 @@ class AstSketchV1(BaseModel):
 
     ngram: int
     minhash: list[int]
+    basis: str = "lexical-tokens"  # "ast" | "lexical-tokens"
 
     @field_validator("ngram")
     @classmethod
@@ -51,6 +57,26 @@ class AstSketchV1(BaseModel):
 register_shape(Shape(name="ast-sketch", version="1.0.0", model=AstSketchV1))
 
 
+def _ast_node_types(node) -> list[str]:
+    """Pre-order sequence of solc AST ``nodeType`` values. Deterministic."""
+    seq: list[str] = []
+
+    def walk(n):
+        if isinstance(n, dict):
+            nt = n.get("nodeType")
+            if isinstance(nt, str):
+                seq.append(nt)
+            for k, v in n.items():
+                if k != "nodeType":
+                    walk(v)
+        elif isinstance(n, list):
+            for x in n:
+                walk(x)
+
+    walk(node)
+    return seq
+
+
 # ---- recipe ----
 
 class AstSketchExtractor(Extractor):
@@ -60,17 +86,22 @@ class AstSketchExtractor(Extractor):
     params = {"ngram": DEFAULT_NGRAM, "num_perm": DEFAULT_NUM_PERM}
 
     def extract(self, source: dict) -> dict:
-        text = source.get("source")
-        if text is None and source.get("source_path"):
-            from pathlib import Path
-
-            text = Path(source["source_path"]).read_text(encoding="utf-8", errors="replace")
-        if text is None:
-            raise ValueError("ast-sketch extract needs 'source' or 'source_path'")
         ngram = int(source.get("ngram", DEFAULT_NGRAM))
         num_perm = int(source.get("num_perm", DEFAULT_NUM_PERM))
-        shingles = shingle(code_tokens(text), ngram)
-        return {"ngram": ngram, "minhash": minhash(shingles, num_perm=num_perm)}
+        ast = source.get("ast")
+        if isinstance(ast, dict):
+            seq, basis = _ast_node_types(ast), "ast"
+        else:
+            text = source.get("source")
+            if text is None and source.get("source_path"):
+                from pathlib import Path
+
+                text = Path(source["source_path"]).read_text(encoding="utf-8", errors="replace")
+            if text is None:
+                raise ValueError("ast-sketch extract needs 'ast', 'source', or 'source_path'")
+            seq, basis = code_tokens(text), "lexical-tokens"
+        return {"ngram": ngram, "minhash": minhash(shingle(seq, ngram), num_perm=num_perm),
+                "basis": basis}
 
 
 class _Pseudo:
@@ -90,12 +121,19 @@ class AstSketchMatcher(Matcher):
         sig_minhash = value.get("minhash", [])
         if not sig_minhash:
             return []
+        basis = value.get("basis", "lexical-tokens")
         num_perm = len(sig_minhash)
         tau = float(self.params.get("tau", 0.7))
         findings = []
         for src in sources:
-            shingles = shingle(code_tokens(src.text), ngram)
-            sim = jaccard(sig_minhash, minhash(shingles, num_perm=num_perm))
+            if basis == "ast":
+                ast = ast_for(sources, src)
+                if ast is None:
+                    continue  # an AST-basis signature needs a built AST; skip without one
+                seq = _ast_node_types(ast)
+            else:
+                seq = code_tokens(src.text)
+            sim = jaccard(sig_minhash, minhash(shingle(seq, ngram), num_perm=num_perm))
             if sim >= tau:
                 fn0 = src.functions[0] if src.functions else None
                 findings.append(make_finding(
@@ -103,8 +141,8 @@ class AstSketchMatcher(Matcher):
                     fn0 or _Pseudo(src.basename), (fn0.start_line if fn0 else 1),
                     round(sim, 3),
                     message=(f"near-duplicate of signature {getattr(signature, 'id', '?')} "
-                             f"(estimated similarity {sim:.2f} >= tau {tau})"),
-                    details={"similarity": round(sim, 3), "ngram": ngram, "tau": tau},
+                             f"(estimated similarity {sim:.2f} >= tau {tau}, basis {basis})"),
+                    details={"similarity": round(sim, 3), "ngram": ngram, "tau": tau, "basis": basis},
                 ))
         return findings
 

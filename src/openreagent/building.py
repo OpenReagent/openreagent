@@ -51,12 +51,13 @@ class BuildStatus(str, Enum):
 
 @dataclass(frozen=True)
 class Artifact:
-    """One compiled contract."""
+    """One compiled contract: the unified Code/Bytecode/AST/ABI view's payload."""
 
     source: str           # source file (path or name as the toolchain reports it)
     contract: str         # contract name
     bytecode: str = ""    # creation bytecode, hex ("" when unavailable)
-    ast: dict | None = None  # solc AST for the source, when the toolchain emits it
+    ast: dict | None = None   # solc AST for the source, when the toolchain emits it
+    abi: list | None = None   # contract ABI, when available
 
     def to_summary(self) -> dict:
         return {
@@ -64,6 +65,7 @@ class Artifact:
             "contract": self.contract,
             "bytecode_len": len(self.bytecode),
             "has_ast": self.ast is not None,
+            "has_abi": self.abi is not None,
         }
 
 
@@ -133,8 +135,9 @@ def _artifacts_from_standard_json(output: dict) -> list[Artifact]:
     for src, contracts in sorted((output.get("contracts") or {}).items()):
         for name, c in sorted((contracts or {}).items()):
             bytecode = str(((c or {}).get("evm", {}).get("bytecode") or {}).get("object", "") or "")
-            artifacts.append(Artifact(source=src, contract=name,
-                                      bytecode=bytecode, ast=asts.get(src)))
+            abi = (c or {}).get("abi")
+            artifacts.append(Artifact(source=src, contract=name, bytecode=bytecode,
+                                      ast=asts.get(src), abi=abi if isinstance(abi, list) else None))
     return artifacts
 
 
@@ -179,6 +182,7 @@ def _read_foundry_out(out_dir: Path) -> tuple[list[Artifact], str]:
         if isinstance(bc, dict):
             bytecode = str(bc.get("object", "") or "")
         ast = obj.get("ast") if isinstance(obj.get("ast"), dict) else None
+        abi = obj.get("abi") if isinstance(obj.get("abi"), list) else None
         source = jf.parent.name           # out/<File.sol>/<Contract>.json
         contract = jf.stem
         if isinstance(ast, dict) and ast.get("absolutePath"):
@@ -186,7 +190,7 @@ def _read_foundry_out(out_dir: Path) -> tuple[list[Artifact], str]:
         if not compiler:
             compiler = _foundry_compiler(obj)
         artifacts.append(Artifact(source=source, contract=contract,
-                                  bytecode=bytecode, ast=ast))
+                                  bytecode=bytecode, ast=ast, abi=abi))
     return artifacts, compiler
 
 
@@ -371,7 +375,15 @@ def _build_vanilla(detection: Detection, install: bool = False) -> BuildResult:
     }
     try:
         out = solcx.compile_standard(std_input, solc_version=version, allow_paths=".")
-    except Exception:  # solcx raises on compiler errors; degrade, never abort
+    except Exception:
+        # Full compile failed (unresolved imports, type errors, …). Retry in
+        # parse-only mode to recover an AST for partial / non-compiling code —
+        # no bytecode/ABI at this stage. Best-effort; helps the demoted lexical
+        # fallback by still giving AST-based recipes something to work with.
+        parsed = _parse_only_ast(solcx, sources, version)
+        if parsed:
+            return BuildResult("vanilla", BuildStatus.OK, compiler=version, artifacts=parsed,
+                               reason="parsed-only: ast recovered, no bytecode/abi")
         return BuildResult("vanilla", BuildStatus.FAILED, reason="build-error",
                            compiler=version, log=traceback.format_exc())
 
@@ -379,6 +391,29 @@ def _build_vanilla(detection: Detection, install: bool = False) -> BuildResult:
     if not artifacts:
         return BuildResult("vanilla", BuildStatus.FAILED, reason="no-artifacts")
     return BuildResult("vanilla", BuildStatus.OK, compiler=version, artifacts=artifacts)
+
+
+def _parse_only_ast(solcx, sources, version) -> list[Artifact]:
+    """Recover a best-effort AST via solc ``stopAfter: parsing`` (no codegen).
+
+    Yields per-source AST artifacts (no bytecode/ABI). Returns ``[]`` if even
+    parsing fails (e.g. unresolved imports, which solc still errors on).
+    """
+    std = {
+        "language": "Solidity",
+        "sources": {src.path: {"content": src.text} for src in sources},
+        "settings": {"stopAfter": "parsing", "outputSelection": {"*": {"": ["ast"]}}},
+    }
+    try:
+        out = solcx.compile_standard(std, solc_version=version, allow_paths=".")
+    except Exception:
+        return []
+    arts: list[Artifact] = []
+    for src, info in sorted((out.get("sources") or {}).items()):
+        ast = info.get("ast") if isinstance(info, dict) else None
+        if ast is not None:
+            arts.append(Artifact(source=src, contract="", bytecode="", ast=ast, abi=None))
+    return arts
 
 
 # ---------------------------------------------------------------------------

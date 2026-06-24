@@ -19,8 +19,11 @@ openreagent/
   loader.py        thin facade: load the whole registry, resolve the sample pool
   store.py         SQLite signature store + parse/pull of remote signatures
   pool.py          load a pool from a directory, a file, or the store
-  solidity.py      dependency-free Solidity reader for the match path
-  matching.py      shared, pure matcher helpers (site targeting, tiers, markers)
+  solidity.py      dependency-free Solidity reader 
+  frameworks.py    deterministic build-framework detection (Foundry/Hardhat/Vanilla)
+  building.py      arm's-length build (forge/hardhat/solc) -> Bytecode/AST/ABI artifacts
+  codeview.py      the unified scan input: Code + Bytecode + AST + ABI
+  matching.py      shared, pure matcher helpers (site targeting, tiers, artifacts)
   recipe_lib.py    building blocks for recipe authors (slot-fill extractor, findings)
   scan.py          the scan engine — imports no LLM client
   extract.py       the extract engine
@@ -59,16 +62,25 @@ references. Installed packages override a built-in of the same name. See
 ## The scan path, end to end
 
 ```
-target .sol ─┐
-             ├─> solidity.load_target ─> [SourceFile, …]            (sorted, deterministic)
-pool / store ┴─> pool.load_pool ───────> [Signature, …]            (shape-validated at load)
+target ─┬─> frameworks.detect ─> building.build ─> [Artifact, …]   (Bytecode/AST/ABI; best-effort)
+        └─> solidity.load_target ─> [SourceFile, …]                (the lexical Code view)
+                         │
+                         └─> codeview.CodeView(sources, build)      (unified: Code+Bytecode+AST+ABI)
+pool / store ─> pool.load_pool ───────────> [Signature, …]         (shape-validated at load)
 
 for each Signature whose recipe is enabled:
     recipe = registry.get(signature.recipe)
-    findings += recipe.matcher.match(signature.value, sources, signature)
+    findings += recipe.matcher.match(signature.value, code, signature)   # code = CodeView
 
 findings.sort()  ─> formatters.{json,sarif,markdown}
 ```
+
+The matcher receives a `CodeView` — a `list[SourceFile]` (so existing matchers are
+unchanged) that also carries the build's per-source Bytecode/AST/ABI. Recipes that
+want artifacts read them via `matching.artifacts_for/ast_for/...`; when a target
+was not built (no toolchain, offline, partial code) there are no artifacts and the
+recipe falls back to the lexical Code view. The lexical reader (`solidity.py`) is
+thus the **fallback**, not the primary structural source.
 
 The pool comes either from a directory/file of JSON records or from the SQLite
 store (`--store`). Properties that hold by construction:

@@ -16,6 +16,7 @@ import re
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from openreagent._hashing import keccak256
+from openreagent.matching import artifacts_for
 from openreagent.recipes import Extractor, Matcher, Recipe, Status, register_recipe
 from openreagent.recipe_lib import make_finding
 from openreagent.shapes import Shape, ShapeRef, register_shape
@@ -106,19 +107,42 @@ class BytecodeHashMatcher(Matcher):
     def match(self, value, sources, signature):
         digest = value.get("digest", "").lower().removeprefix("0x")
         norm = value.get("normalization", "")
-        if not norm.startswith("source-text"):
-            return []  # bytecode digests need a compiler; not handled here
         findings = []
-        for src in sources:
-            d = keccak256(_normalize_source(src.text).encode("utf-8"))
-            if d == digest:
-                fn0 = src.functions[0] if src.functions else None
-                findings.append(make_finding(
-                    NAME, VERSION, signature, src,
-                    fn0 or _Pseudo(src.basename), (fn0.start_line if fn0 else 1), 1.0,
-                    message=f"exact normalized-source clone of signature {getattr(signature, 'id', '?')}",
-                    details={"digest": digest, "normalization": norm},
-                ))
+        sid = getattr(signature, "id", "?")
+        if norm.startswith("source-text"):
+            # Lexical fallback: hash a source-text normalization (no compiler).
+            for src in sources:
+                if keccak256(_normalize_source(src.text).encode("utf-8")) == digest:
+                    fn0 = src.functions[0] if src.functions else None
+                    findings.append(make_finding(
+                        NAME, VERSION, signature, src,
+                        fn0 or _Pseudo(src.basename), (fn0.start_line if fn0 else 1), 1.0,
+                        message=f"exact normalized-source clone of signature {sid}",
+                        details={"digest": digest, "normalization": norm},
+                    ))
+        elif norm.startswith("bytecode"):
+            # Artifact path: hash the compiled (creation) bytecode of each
+            # contract. Available only when the target was built; otherwise this
+            # source contributes no artifacts and is skipped.
+            for src in sources:
+                for art in artifacts_for(sources, src):
+                    bc = getattr(art, "bytecode", "") or ""
+                    if not bc:
+                        continue
+                    try:
+                        d = keccak256(bytes.fromhex(_normalize_bytecode(bc)))
+                    except ValueError:
+                        continue
+                    if d == digest:
+                        contract = getattr(art, "contract", "") or src.basename
+                        fn0 = src.functions[0] if src.functions else None
+                        findings.append(make_finding(
+                            NAME, VERSION, signature, src,
+                            fn0 or _Pseudo(contract), (fn0.start_line if fn0 else 1), 1.0,
+                            message=f"exact normalized-bytecode clone of signature {sid} "
+                                    f"(contract {contract})",
+                            details={"digest": digest, "normalization": norm, "contract": contract},
+                        ))
         return findings
 
 

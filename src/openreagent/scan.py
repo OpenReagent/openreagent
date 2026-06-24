@@ -18,6 +18,7 @@ from pathlib import Path
 
 from openreagent import loader
 from openreagent.building import BuildResult, build as build_target
+from openreagent.codeview import CodeView
 from openreagent.frameworks import Framework, detect as detect_framework
 from openreagent.pool import PoolEntry, load_pool
 from openreagent.recipes import Finding, Recipe, all_recipes, get_recipe
@@ -115,6 +116,9 @@ def scan(
 
     target_info, build_result = _describe_target(target, framework, do_build, install_toolchain)
     sources: list[SourceFile] = load_target(target)
+    # The unified scan input: lexical Code + (when built) Bytecode/AST/ABI. Acts
+    # as the source list for existing matchers; artifact-aware recipes read more.
+    code = CodeView(sources, build_result)
     active = enabled_recipe_set(enable, disable)
 
     entries: list[PoolEntry] = load_pool(pool, store=store)
@@ -136,7 +140,7 @@ def scan(
                             "recipe": recipe.name})
             continue
         try:
-            matched = recipe.matcher.match(sig.value, sources, sig)
+            matched = recipe.matcher.match(sig.value, code, sig)
         except Exception as exc:  # a single bad signature must not abort the scan
             skipped.append({"signature": sig.id, "reason": f"matcher error: {exc}",
                             "recipe": recipe.name})

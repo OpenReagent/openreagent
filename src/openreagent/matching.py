@@ -100,6 +100,42 @@ def marker_present(fn: Function, markers: list[str]) -> bool:
     return False
 
 
+def artifacts_for(sources, src) -> list:
+    """Build artifacts for ``src`` when scanning a :class:`CodeView`, else ``[]``.
+
+    Duck-typed so a matcher works whether it is handed a ``CodeView`` (artifacts
+    available) or a plain ``list[SourceFile]`` (no build — lexical fallback).
+    """
+    fn = getattr(sources, "artifacts_for", None)
+    return fn(src) if callable(fn) else []
+
+
+def ast_for(sources, src):
+    """The AST for ``src`` when available (built target), else ``None``."""
+    fn = getattr(sources, "ast_for", None)
+    return fn(src) if callable(fn) else None
+
+
+def bytecode_for(sources, src) -> list[tuple[str, str]]:
+    """List of ``(contract, creation_bytecode)`` for ``src``; empty without a build."""
+    out: list[tuple[str, str]] = []
+    for art in artifacts_for(sources, src):
+        bc = getattr(art, "bytecode", "") or ""
+        if bc:
+            out.append((getattr(art, "contract", ""), bc))
+    return out
+
+
+def abi_for(sources, src) -> list:
+    """Concatenated ABIs for ``src`` (across its contracts); empty without a build."""
+    out: list = []
+    for art in artifacts_for(sources, src):
+        abi = getattr(art, "abi", None)
+        if isinstance(abi, list):
+            out.extend(abi)
+    return out
+
+
 def as_token_list(v) -> list[str]:
     """Coerce a slot value into a list of lowercase tokens for marker matching."""
     if v is None:
