@@ -28,14 +28,15 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Recipes that compile or hash bytecode (e.g. bytecode-hash).
-bytecode = ["py-solc-x>=2.0", "eth-hash[pycryptodome]>=0.6"]
-# Recipes that build AST sketches (e.g. ast-sketch).
+# Recipes that compile or disassemble/hash bytecode (bytecode-hash, bytecode-sketch).
+bytecode = ["py-solc-x>=2.0", "eth-hash[pycryptodome]>=0.6", "pyevmasm>=0.2.3"]
+# Recipes that build AST/opcode sketches (e.g. ast-sketch).
 sketch = ["datasketch>=1.6"]
 # Everything an integrator might want.
 all = [
     "py-solc-x>=2.0",
     "eth-hash[pycryptodome]>=0.6",
+    "pyevmasm>=0.2.3",
     "datasketch>=1.6",
 ]
 dev = ["pytest>=7.4"]

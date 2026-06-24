@@ -1,0 +1,9 @@
+{
+  "name": "bytecode-sketch",
+  "version": "1.0.0",
+  "kind": "recipe",
+  "entry": "detector.py",
+  "requires": [],
+  "description": "Bytecode near-duplicate: MinHash over disassembled opcode n-grams (PUSH-masked, metadata-stripped).",
+  "provides": { "recipes": ["bytecode-sketch"], "shapes": ["bytecode-sketch"] }
+}

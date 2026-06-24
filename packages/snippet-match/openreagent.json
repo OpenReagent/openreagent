@@ -1,0 +1,9 @@
+{
+  "name": "snippet-match",
+  "version": "1.0.0",
+  "kind": "recipe",
+  "entry": "detector.py",
+  "requires": [],
+  "description": "Sub-function snippet clone: token n-gram containment of a known-vulnerable snippet.",
+  "provides": { "recipes": ["snippet-match"], "shapes": ["snippet-match"] }
+}

@@ -30,8 +30,12 @@ optional extras, so a plain source scan still runs anywhere.
   degrades gracefully when a tool or extra is absent.
 - **Artifact-fed recipes** — carry bytecode and AST alongside the source view so
   `bytecode-hash` and `ast-sketch` can use them (see [recipes.md](recipes.md)).
-- **More recipes & benchmarking** — BAP-/Vuddy-style clone recipes; large-scale
-  Ethereum benchmark (methodology only; no numbers published, see
+- **Hashable clone recipes** — shipped: `function-skeleton` (function-level
+  abstracted clone), `bytecode-sketch` (opcode-ngram bytecode near-duplicate),
+  `snippet-match` (sub-function token containment), complementing the existing
+  `bytecode-hash` and `ast-sketch`. All deterministic, hashable, no LLM/ML.
+- **Large-scale benchmarking** — quantitative evaluation over a large Ethereum
+  contract benchmark (methodology only; no numbers published, see
   [evaluation.md](evaluation.md)).
 
 ## Long-term (after v1.0.0)

@@ -1,0 +1,9 @@
+{
+  "name": "function-skeleton",
+  "version": "1.0.0",
+  "kind": "recipe",
+  "entry": "detector.py",
+  "requires": [],
+  "description": "Function-level abstracted clone: hash a function's identifier-abstracted token skeleton and match by equality.",
+  "provides": { "recipes": ["function-skeleton"], "shapes": ["function-skeleton"] }
+}

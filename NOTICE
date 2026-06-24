@@ -26,6 +26,7 @@ Core (always required):
 Optional extras (installed only when the corresponding feature is used):
   - py-solc-x           MIT License        (extra: bytecode)
   - eth-hash            MIT License        (extra: bytecode)
+  - pyevmasm            Apache-2.0 License (extra: bytecode)
   - datasketch          MIT License        (extra: sketch)
 
 Dependency-license note (not legal advice): OpenReagent deliberately avoids

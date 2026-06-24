@@ -31,8 +31,11 @@ All built-in recipes are deterministic and hashable (no LLM, no ML).
 
 | package | kind | requires | provides |
 |---------|------|----------|----------|
-| `bytecode-hash` | bundle | — | shape + recipe: exact/near-exact clones (journey) |
-| `ast-sketch` | bundle | — | shape + recipe: lightly modified near-duplicates (journey) |
+| `bytecode-hash` | bundle | — | shape + recipe: exact / near-exact clone (journey) |
+| `bytecode-sketch` | bundle | — | shape + recipe: bytecode near-duplicate, opcode-ngram MinHash (journey) |
+| `ast-sketch` | bundle | — | shape + recipe: AST/token near-duplicate (journey) |
+| `function-skeleton` | bundle | — | shape + recipe: function-level abstracted clone (journey) |
+| `snippet-match` | bundle | — | shape + recipe: sub-function snippet containment (journey) |
 
 Built-in packages ship inside the wheel. User-installed packages live under
 `$OPENREAGENT_HOME` (default `~/.openreagent/packages`) and override a built-in
