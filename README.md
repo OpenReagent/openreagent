@@ -20,7 +20,6 @@ source.
 pip install openreagent                 # core (scan, extract scaffolding, CLI, store)
 pip install 'openreagent[bytecode]'     # + the bytecode-hash clone recipe
 pip install 'openreagent[sketch]'       # + the ast-sketch near-duplicate recipe
-pip install 'openreagent[extract]'      # + the default LLM client for extraction
 pip install 'openreagent[all]'          # everything
 ```
 
@@ -76,16 +75,14 @@ same name. See [docs/packages.md](docs/packages.md).
 
 ## How extraction works (the extract path)
 
-Extraction turns one audit finding into one signature record. It is kept
-separate from scanning, runs offline, and **may** use an LLM — but only to fill a
-value's slots from prose, never during matching. Whether a recipe's extractor
-uses an LLM is declared by the recipe (`openreagent recipes` shows it), and every
-extraction is recorded in the signature's provenance. If a finding already
-carries structured `slots`, extraction is fully deterministic and needs no LLM.
+Extraction turns one source (a contract, a build artifact) into one signature
+record. It is kept separate from scanning, runs offline, and is **deterministic
+and uses no LLM** — it reduces the source to the recipe's hashable value. Every
+extraction is recorded in the signature's provenance.
 
 ```bash
-openreagent extract finding.json --recipe internal-absence -o sig.json
-openreagent extract finding.json --recipe canonical-divergence --to-store
+openreagent extract finding.json --recipe bytecode-hash -o sig.json
+openreagent extract finding.json --recipe ast-sketch --to-store
 ```
 
 ## The signature store
@@ -120,7 +117,7 @@ record. Each detector is its own recipe over a shared shape — the recipe ident
 | `scan <path>` | load pool/store, run matchers, emit findings (deterministic, no LLM) |
 | `detect <path>` | report the target's build framework — Foundry / Hardhat / Vanilla (no build) |
 | `build <path>` | build the target at arm's length (forge / hardhat / solc); report artifacts |
-| `extract <finding>` | one audit finding → one signature record (offline; may use an LLM) |
+| `extract <finding>` | one source → one signature record (offline; deterministic, no LLM) |
 | `install <source>` | install a detector/shape package (dir, zip, url, `github:owner/repo`) |
 | `uninstall <name>` | remove an installed package |
 | `packages` | list built-in and installed packages |

@@ -1,9 +1,0 @@
-{
-  "name": "ordering-violation",
-  "version": "1.0.0",
-  "kind": "recipe",
-  "entry": "detector.py",
-  "requires": ["slot-spec"],
-  "description": "Flags two operations that occur in the wrong order.",
-  "provides": { "recipes": ["ordering-violation"], "shapes": [] }
-}

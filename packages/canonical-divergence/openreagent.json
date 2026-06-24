@@ -1,9 +1,0 @@
-{
-  "name": "canonical-divergence",
-  "version": "1.0.0",
-  "kind": "recipe",
-  "entry": "detector.py",
-  "requires": ["slot-spec"],
-  "description": "Flags an implementation that diverges from a canonical reference. Bundles its own reference library.",
-  "provides": { "recipes": ["canonical-divergence"], "shapes": [] }
-}

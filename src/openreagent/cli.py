@@ -105,16 +105,13 @@ def extract(
     reviewer: Optional[str] = typer.Option(None, "--reviewer", help="Reviewer to record in provenance."),
     output: Optional[str] = typer.Option(None, "--output", "-o", help="Write the signature here."),
     to_store: bool = typer.Option(False, "--to-store", help="Also add the signature to the local store."),
-    replay: Optional[str] = typer.Option(None, "--replay", help="JSONL of pre-recorded LLM responses."),
 ):
-    """Turn an audit finding into a signature record. Offline; may use an LLM."""
+    """Turn an audit finding into a signature record. Offline and deterministic."""
     from openreagent.extract import extract_signature, write_signature
-    from openreagent.llm import ReplayClient
 
-    client = ReplayClient(replay) if replay else None
     try:
         sig = extract_signature(finding, recipe, version=version,
-                                signature_id=signature_id, reviewer=reviewer, client=client)
+                                signature_id=signature_id, reviewer=reviewer)
     except Exception as exc:
         err.print(f"[red]extract failed:[/red] {exc}")
         raise typer.Exit(code=1)

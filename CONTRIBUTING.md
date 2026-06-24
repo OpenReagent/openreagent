@@ -6,16 +6,13 @@ fixtures, and documentation are welcome.
 
 ## Ways to contribute
 
-- **Author a package** (the most common contribution): a detector recipe over
-  the shared `slot-spec` shape, a recipe over a new shape, or a shape on its own.
-  A package is one directory with an `openreagent.json` manifest and an entry
-  module. See [docs/extending.md](docs/extending.md) for a worked example and
+- **Author a package** (the most common contribution): a deterministic, hashable
+  detector recipe over a new or existing shape, or a shape on its own. A package
+  is one directory with an `openreagent.json` manifest and an entry module. See
+  [docs/extending.md](docs/extending.md) for a worked example and
   [docs/packages.md](docs/packages.md) for the format.
-- **Add a canonical reference** for `canonical-divergence`: one JSON file under
-  that package's bundled `references/` directory. References live inside the
-  package, not in a global directory.
-- **Improve marker vocabularies** in `src/openreagent/_markers.py` when a common
-  Solidity spelling is missing.
+- **Bundle reference data** a recipe needs inside its own package, loaded relative
+  to the entry module's `__file__` (never a global directory).
 - **Improve documentation** in `docs/`.
 
 ## Development setup
@@ -38,7 +35,8 @@ self-contained directory loaded in dependency order.
    function** of `(value, code)` (no shared mutable state, no I/O beyond the
    supplied sources). The determinism and isolation guards in `tests/` must keep
    passing.
-3. Declare dependencies in `requires` (a slot recipe requires `slot-spec`).
+3. Declare dependencies in `requires` (a recipe over a separate shape package
+   requires that shape package; a self-contained recipe requires nothing).
 4. Bundle any assets (references) **inside** the package and load them relative
    to the entry module.
 5. Choose a `status` honestly: `experimental` for a new recipe; `production` only

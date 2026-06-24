@@ -11,13 +11,13 @@ Manifest (``openreagent.json``):
 
 ```json
 {
-  "name": "canonical-divergence",
+  "name": "bytecode-hash",
   "version": "1.0.0",
   "kind": "recipe",                 // "recipe" | "shape" | "bundle"
   "entry": "detector.py",           // module that registers on import
-  "requires": ["slot-spec"],        // other packages that must load first
+  "requires": [],                   // other packages that must load first
   "description": "…",
-  "provides": { "recipes": ["canonical-divergence"], "shapes": [] }
+  "provides": { "recipes": ["bytecode-hash"], "shapes": ["bytecode-hash"] }
 }
 ```
 

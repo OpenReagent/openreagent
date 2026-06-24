@@ -32,14 +32,11 @@ dependencies = [
 bytecode = ["py-solc-x>=2.0", "eth-hash[pycryptodome]>=0.6"]
 # Recipes that build AST sketches (e.g. ast-sketch).
 sketch = ["datasketch>=1.6"]
-# The extract path may call an LLM. Never imported by the scan path.
-extract = ["anthropic>=0.39"]
 # Everything an integrator might want.
 all = [
     "py-solc-x>=2.0",
     "eth-hash[pycryptodome]>=0.6",
     "datasketch>=1.6",
-    "anthropic>=0.39",
 ]
 dev = ["pytest>=7.4"]
 

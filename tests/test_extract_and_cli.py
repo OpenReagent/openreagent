@@ -1,4 +1,4 @@
-"""The extract path (offline) and the CLI surface."""
+"""The extract path (offline, deterministic) and the CLI surface."""
 from __future__ import annotations
 
 import json
@@ -12,18 +12,18 @@ from openreagent.shapes import conforms
 runner = CliRunner()
 
 
-def test_extract_offline_passthrough_slots():
+def test_extract_offline_bytecode_hash():
     finding = {
-        "slots": {"operation": "access_control",
-                  "site": {"function": "setFeeRecipient", "file": "Vault.sol"}},
-        "source_kind": "audit_report",
-        "source_ref": "sample/AC-99",
+        "bytecode": "60806040" * 4,
+        "source_kind": "build",
+        "source_ref": "sample/clone-1",
     }
-    sig = extract_signature(finding, "internal-absence")
-    assert sig.recipe.name == "internal-absence"
-    assert conforms(sig.value, "slot-spec")
-    assert sig.provenance[0].source_ref == "sample/AC-99"
-    assert sig.provenance[0].extracted_by.recipe == "internal-absence"
+    sig = extract_signature(finding, "bytecode-hash")
+    assert sig.recipe.name == "bytecode-hash"
+    assert conforms(sig.value, "bytecode-hash")
+    assert sig.value["normalization"].startswith("bytecode")
+    assert sig.provenance[0].source_ref == "sample/clone-1"
+    assert sig.provenance[0].extracted_by.recipe == "bytecode-hash"
 
 
 def test_cli_recipes_json():
@@ -31,24 +31,24 @@ def test_cli_recipes_json():
     assert result.exit_code == 0
     data = json.loads(result.stdout)
     names = {r["name"] for r in data}
-    assert "internal-absence" in names
+    assert "bytecode-hash" in names
+    assert "ast-sketch" in names
     # No measurement numbers in the recipe listing.
     assert "precision" not in result.stdout.lower()
-    # No recipe is named with the old M-number taxonomy (e.g. "M1-…", "M6-…").
-    assert not any(len(n) >= 2 and n[0] in "Mm" and n[1].isdigit() for n in names)
 
 
-def test_cli_scan_json(fixtures_dir):
-    result = runner.invoke(app, ["scan", fixtures_dir, "--format", "json"])
+def test_cli_scan_runs(fixtures_dir):
+    # Default scan is deterministic and emits a well-formed report (no findings
+    # is fine — the journey recipes are off by default).
+    result = runner.invoke(app, ["scan", fixtures_dir, "--no-build", "--format", "json"])
     assert result.exit_code == 0
     data = json.loads(result.stdout)
-    recipes_hit = {f["recipe"] for f in data["findings"]}
-    assert "internal-absence" in recipes_hit
-    assert "canonical-divergence" in recipes_hit
+    assert data["tool"]["name"] == "openreagent"
+    assert "summary" in data and "findings" in data
 
 
 def test_cli_scan_sarif(fixtures_dir):
-    result = runner.invoke(app, ["scan", fixtures_dir, "--format", "sarif"])
+    result = runner.invoke(app, ["scan", fixtures_dir, "--no-build", "--format", "sarif"])
     assert result.exit_code == 0
     doc = json.loads(result.stdout)
     assert doc["version"] == "2.1.0"
@@ -58,11 +58,11 @@ def test_cli_scan_sarif(fixtures_dir):
 def test_cli_validate_sample(tmp_path):
     sig = {
         "id": "sig-x",
-        "recipe": {"name": "internal-absence", "version": "1.0.0"},
-        "value": {"slots": {"operation": "access_control"}},
+        "recipe": {"name": "bytecode-hash", "version": "1.0.0"},
+        "value": {"digest": "ab" * 32, "normalization": "source-text"},
         "provenance": [{
             "source_kind": "audit_report", "source_ref": "x",
-            "extracted_by": {"recipe": "internal-absence", "version": "1.0.0",
+            "extracted_by": {"recipe": "bytecode-hash", "version": "1.0.0",
                              "timestamp": "2026-06-01T00:00:00Z"},
         }],
     }

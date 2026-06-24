@@ -16,11 +16,8 @@ def setup_module(_):
 def test_recipes_load_and_self_describe():
     recs = all_recipes()
     names = {r.name for r in recs}
-    expected = {
-        "internal-absence", "canonical-divergence", "operand-mismatch",
-        "operator-direction", "unbound-caller-value", "ordering-violation",
-        "aggregated-state", "generic-slot", "bytecode-hash", "ast-sketch",
-    }
+    # The hashable, deterministic recipes ship built-in.
+    expected = {"bytecode-hash", "ast-sketch"}
     assert expected <= names
     for r in recs:
         d = r.describe()
@@ -33,17 +30,9 @@ def test_recipes_load_and_self_describe():
 
 
 def test_status_map_defaults():
-    assert get_recipe("internal-absence").default_enabled is True
-    assert get_recipe("canonical-divergence").default_enabled is True
+    # The journey recipes are off by default.
     assert get_recipe("bytecode-hash").default_enabled is False
     assert get_recipe("ast-sketch").default_enabled is False
-    assert get_recipe("generic-slot").default_enabled is False
-
-
-def test_slot_spec_conformance():
-    assert conforms({"slots": {"operation": "access_control"}}, "slot-spec")
-    assert conforms({"slots": {}, "freeform": "anything"}, "slot-spec")
-    assert not conforms({"no_slots": 1}, "slot-spec")
 
 
 def test_bytecode_hash_conformance():
@@ -63,18 +52,18 @@ def test_ast_sketch_conformance():
 def test_signature_record_roundtrip():
     raw = {
         "id": "sig-x",
-        "recipe": {"name": "internal-absence", "version": "1.0.0"},
-        "value": {"slots": {"operation": "access_control"}},
+        "recipe": {"name": "bytecode-hash", "version": "1.0.0"},
+        "value": {"digest": "ab" * 32, "normalization": "source-text"},
         "provenance": [{
             "source_kind": "audit_report",
             "source_ref": "x",
-            "extracted_by": {"recipe": "internal-absence", "version": "1.0.0",
+            "extracted_by": {"recipe": "bytecode-hash", "version": "1.0.0",
                              "timestamp": "2026-06-01T00:00:00Z"},
         }],
     }
     sig = Signature.from_dict(raw)
     assert sig.id == "sig-x"
-    assert sig.to_dict()["recipe"]["name"] == "internal-absence"
+    assert sig.to_dict()["recipe"]["name"] == "bytecode-hash"
 
 
 def test_signature_requires_provenance():

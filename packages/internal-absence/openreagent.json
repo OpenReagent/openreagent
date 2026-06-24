@@ -1,9 +1,0 @@
-{
-  "name": "internal-absence",
-  "version": "1.0.0",
-  "kind": "recipe",
-  "entry": "detector.py",
-  "requires": ["slot-spec"],
-  "description": "Flags a required element that is absent at a named site.",
-  "provides": { "recipes": ["internal-absence"], "shapes": [] }
-}

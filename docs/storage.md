@@ -32,7 +32,7 @@ rejected.
 ```bash
 openreagent sig add sig.json                # a single record, an array, or JSONL
 openreagent sig add ./signatures/           # every *.json under a directory
-openreagent extract finding.json -r internal-absence --to-store
+openreagent extract finding.json -r bytecode-hash --to-store
 ```
 
 ## Pulling from a remote source
@@ -54,7 +54,7 @@ pulled record is shape-validated on insert.
 
 ```bash
 openreagent sig list                 # table of id / recipe / version / added
-openreagent sig list --recipe canonical-divergence
+openreagent sig list --recipe bytecode-hash
 openreagent sig list --json
 openreagent sig remove <id>
 openreagent sig clear                # empty the store (prompts unless --yes)

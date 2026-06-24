@@ -2,7 +2,7 @@
 
 OpenReagent has two layers — a small, stable **record** and an open **registry**
 of shapes and recipes — and two paths over them: **scan** (deterministic, no LLM)
-and **extract** (offline, may use an LLM). The registry is distributed as
+and **extract** (offline, deterministic). The registry is distributed as
 installable **packages**, and signatures live in a local **store**. This document
 walks the components, traces each path end to end, and shows how a package plugs
 in.
@@ -24,10 +24,9 @@ openreagent/
   building.py      arm's-length build (forge/hardhat/solc) -> Bytecode/AST/ABI artifacts
   codeview.py      the unified scan input: Code + Bytecode + AST + ABI
   matching.py      shared, pure matcher helpers (site targeting, tiers, artifacts)
-  recipe_lib.py    building blocks for recipe authors (slot-fill extractor, findings)
-  scan.py          the scan engine — imports no LLM client
-  extract.py       the extract engine
-  llm.py           pluggable LLM client (imported only on the extract path)
+  recipe_lib.py    building blocks for recipe authors (the make_finding helper)
+  scan.py          the scan engine — deterministic, no LLM
+  extract.py       the extract engine (offline, deterministic)
   formatters.py    JSON / SARIF 2.1.0 / Markdown
   cli.py           the `openreagent` command-line interface
 packages/          one directory per package; each self-contained (a recipe's
@@ -55,8 +54,9 @@ install(source)   materialize a source (sources.py) and copy its package(s) unde
 ```
 
 A package is imported from its own directory, so its entry module's `__file__`
-points inside the package — that is how `canonical-divergence` loads its bundled
-references. Installed packages override a built-in of the same name. See
+points inside the package — that is how a package loads any bundled assets
+(e.g. reference data) relative to itself. Installed packages override a built-in
+of the same name. See
 [packages.md](packages.md).
 
 ## The scan path, end to end
@@ -88,11 +88,9 @@ store (`--store`). Properties that hold by construction:
 - **Deterministic.** Sources and pool are processed in sorted order; every
   matcher is a pure function of `(value, code)`; output is sorted and carries no
   timestamps. The same inputs produce byte-identical findings.
-- **No LLM at match time.** `scan.py` imports no LLM client, directly or
-  transitively. Recipe modules import `openreagent.llm` lazily, inside the
-  extractor's `extract`, which the scan path never calls. A test runs a scan in a
-  fresh subprocess and asserts neither `anthropic` nor `openreagent.llm` was
-  imported.
+- **No LLM, anywhere.** Recipes are deterministic and hashable on both paths;
+  the package ships no LLM client. A test runs a scan in a fresh subprocess and
+  asserts no LLM module (e.g. `anthropic`) was imported.
 - **Shape-validated input.** Both the file pool and the store validate every
   signature's value against its recipe's shape before any matcher runs.
 - **Recipe-isolated.** Recipes hold no shared mutable state, so enabling or
@@ -101,18 +99,15 @@ store (`--store`). Properties that hold by construction:
 ## The extract path, end to end
 
 ```
-audit finding (json) ─> recipe.extractor.extract(finding) ─> value
-                          (uses_llm? only if slots not pre-supplied)
+source (json: contract / build artifact) ─> recipe.extractor.extract(source) ─> value
 value ─> shape.validate(value)                              (must conform)
       ─> assemble Signature with provenance.extracted_by{recipe,version,timestamp}
       ─> write signature .json  and/or  add to the store
 ```
 
-A finding that already carries structured `slots` is converted with no LLM at
-all. A prose-only finding is filled by the configured client
-(`openreagent.llm.default_client`): an `AnthropicClient` when `ANTHROPIC_API_KEY`
-is set, or a `ReplayClient` over a JSONL file for offline, reproducible
-extraction.
+Extraction is **deterministic and offline**: it reduces the source to the
+recipe's hashable value (e.g. a normalized digest or a MinHash signature) with no
+LLM. The same source yields the same value every run.
 
 ## The signature store
 
@@ -132,8 +127,8 @@ shape and/or a recipe:
 # packages/my-recipe/detector.py
 register_recipe(Recipe(
     name="my-recipe", version="1.0.0",
-    shape=ShapeRef(name="slot-spec", version="1.0.0"),
-    extractor=MyExtractor(),   # source -> value (may set uses_llm=True)
+    shape=ShapeRef(name="my-shape", version="1.0.0"),
+    extractor=MyExtractor(),   # source -> value   (deterministic, no LLM)
     matcher=MyMatcher(),       # (value, code) -> [Finding]   (never uses an LLM)
     status=Status.EXPERIMENTAL,
 ))

@@ -8,9 +8,9 @@ shape, a recipe, or both, and bundles any assets it needs inside itself.
 ## Anatomy of a package
 
 ```
-missing-deadline/
+comment-hash/
   openreagent.json     # manifest
-  detector.py          # entry module: registers the recipe on import
+  detector.py          # entry module: registers a shape + recipe on import
   references/          # (optional) assets the recipe loads relative to itself
 ```
 
@@ -18,68 +18,82 @@ missing-deadline/
 
 ```json
 {
-  "name": "missing-deadline",
+  "name": "comment-hash",
   "version": "1.0.0",
   "kind": "recipe",
   "entry": "detector.py",
-  "requires": ["slot-spec"],
-  "description": "Flags a function with no deadline check.",
-  "provides": { "recipes": ["missing-deadline"], "shapes": [] }
+  "requires": [],
+  "description": "Exact clone by a comment-stripped source-text hash.",
+  "provides": { "recipes": ["comment-hash"], "shapes": ["comment-hash"] }
 }
 ```
 
-`detector.py` — a worked recipe over the shared `slot-spec` shape:
+`detector.py` — a worked, self-contained, hashable recipe (registers its own
+shape; deterministic; no LLM). It hashes a normalized source view and flags an
+exact match:
 
 ```python
-from openreagent.matching import function_in_scope, marker_present, site_targets, slot
-from openreagent.recipes import Matcher, Recipe, Status, register_recipe
-from openreagent.recipe_lib import SlotFillExtractor, make_finding
-from openreagent.shapes import ShapeRef
-from openreagent.solidity import iter_functions
+from pydantic import BaseModel, ConfigDict
+from openreagent._hashing import keccak256
+from openreagent.recipes import Extractor, Matcher, Recipe, Status, register_recipe
+from openreagent.recipe_lib import make_finding
+from openreagent.shapes import Shape, ShapeRef, register_shape
+from openreagent.solidity import _mask
 
-NAME, VERSION = "missing-deadline", "1.0.0"
-DEADLINE_MARKERS = ["deadline", "block.timestamp", "expiry", "expired"]
+NAME, VERSION = "comment-hash", "1.0.0"
 
 
-class DeadlineExtractor(SlotFillExtractor):
-    impl = "missing-deadline-slot-fill"
+class CommentHashV1(BaseModel):           # the value shape
+    model_config = ConfigDict(extra="forbid")
+    digest: str
+
+
+register_shape(Shape(name="comment-hash", version="1.0.0", model=CommentHashV1))
+
+
+def _normalize(text: str) -> str:         # strip comments/strings, collapse ws
+    return " ".join(_mask(text).split())
+
+
+class CommentHashExtractor(Extractor):    # source -> value (deterministic)
+    impl = "comment-hash"
     version = "1.0.0"
-    slot_keys = ("site",)
+
+    def extract(self, source):
+        text = source.get("source") or ""
+        return {"digest": keccak256(_normalize(text).encode("utf-8"))}
 
 
-class DeadlineMatcher(Matcher):
-    impl = "missing-deadline-detector"
+class CommentHashMatcher(Matcher):        # (value, code) -> findings (no LLM)
+    impl = "comment-hash"
     version = "1.0.0"
 
     def match(self, value, sources, signature):
-        funcs, files = site_targets(slot(value, "site"))
         out = []
-        for src, fn in iter_functions(sources):
-            if (funcs or files) and not function_in_scope(src, fn, funcs, files):
-                continue
-            if marker_present(fn, DEADLINE_MARKERS):
-                continue  # a deadline check is present
-            out.append(make_finding(
-                NAME, VERSION, signature, src, fn, fn.start_line, 0.7,
-                message=f"{fn.name} has no deadline check", details={},
-            ))
+        for src in sources:
+            if keccak256(_normalize(src.text).encode("utf-8")) == value.get("digest"):
+                fn0 = src.functions[0] if src.functions else None
+                out.append(make_finding(
+                    NAME, VERSION, signature, src, fn0 or src, (fn0.start_line if fn0 else 1),
+                    1.0, message=f"comment-stripped clone of {getattr(signature, 'id', '?')}",
+                ))
         return out
 
 
 register_recipe(Recipe(
     name=NAME, version=VERSION,
-    shape=ShapeRef(name="slot-spec", version="1.0.0"),
-    extractor=DeadlineExtractor(), matcher=DeadlineMatcher(),
-    status=Status.EXPERIMENTAL, note="function missing a deadline check",
+    shape=ShapeRef(name="comment-hash", version="1.0.0"),
+    extractor=CommentHashExtractor(), matcher=CommentHashMatcher(),
+    status=Status.EXPERIMENTAL, note="exact comment-stripped source clone",
 ))
 ```
 
 Install and use it:
 
 ```bash
-openreagent install ./missing-deadline
-openreagent recipes                 # missing-deadline now appears
-openreagent scan ./contracts --enable missing-deadline
+openreagent install ./comment-hash
+openreagent recipes                 # comment-hash now appears
+openreagent scan ./contracts --enable comment-hash
 ```
 
 ### Rules every recipe must follow
@@ -103,8 +117,8 @@ from pathlib import Path
 REFERENCES_DIR = Path(__file__).resolve().parent / "references"
 ```
 
-The built-in `canonical-divergence` package does exactly this; there is no global
-references directory.
+Load assets relative to the entry module's `__file__` so they travel with the
+package when it is installed; there is no global references directory.
 
 ## Add a shape (its own package, or bundled with a recipe)
 

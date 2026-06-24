@@ -4,15 +4,10 @@ A *pool* is a directory of signature records (`*.json`). The scan path loads
 the pool, validates every signature against its recipe's shape, and runs the
 matchers.
 
-This shipped pool is **empty by default**, apart from a few hand-authored sample
-signatures under `samples/`:
-
-- `samples/sig-missing-access-control.json` — one per production recipe
-- `samples/sig-amm-spot-price.json`
-
-The samples were written from scratch for documentation. They are **not**
-extracted from any licensed corpus or audit report, and they carry no
-measurement data — only the slots a matcher needs.
+This shipped pool is **empty by default**. Add your own signature records under
+a pool directory and scan against them; signatures are extracted deterministically
+(`openreagent extract`) and carry no measurement data — only the hashable value a
+matcher needs.
 
 You can point the CLI at any pool directory:
 

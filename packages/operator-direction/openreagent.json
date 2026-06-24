@@ -1,9 +1,0 @@
-{
-  "name": "operator-direction",
-  "version": "1.0.0",
-  "kind": "recipe",
-  "entry": "detector.py",
-  "requires": ["slot-spec"],
-  "description": "Flags a comparison operator pointing the wrong way.",
-  "provides": { "recipes": ["operator-direction"], "shapes": [] }
-}

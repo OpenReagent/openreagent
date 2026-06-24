@@ -20,15 +20,18 @@ A directory containing:
 
 ```json
 {
-  "name": "canonical-divergence",
+  "name": "bytecode-hash",
   "version": "1.0.0",
   "kind": "recipe",
   "entry": "detector.py",
-  "requires": ["slot-spec"],
-  "description": "Flags divergence from a canonical reference.",
-  "provides": { "recipes": ["canonical-divergence"], "shapes": [] }
+  "requires": [],
+  "description": "Exact / near-exact clone by a normalized digest.",
+  "provides": { "recipes": ["bytecode-hash"], "shapes": ["bytecode-hash"] }
 }
 ```
+
+(A recipe over a separate shape package lists that package in `requires`;
+`bytecode-hash` registers its own shape, so it requires nothing.)
 
 | field | meaning |
 |-------|---------|
@@ -45,7 +48,7 @@ Loading discovers every available package and topologically sorts by `requires`,
 so a shape package loads before any recipe that depends on it. A missing
 dependency or a cycle is an error. Resolution spans **both** built-in and
 installed packages, so a recipe installed from GitHub can depend on a built-in
-`slot-spec`, or on another package you install alongside it.
+shape package, or on another package you install alongside it.
 
 ## Where packages live
 

@@ -27,7 +27,6 @@ Optional extras (installed only when the corresponding feature is used):
   - py-solc-x           MIT License        (extra: bytecode)
   - eth-hash            MIT License        (extra: bytecode)
   - datasketch          MIT License        (extra: sketch)
-  - anthropic           MIT License        (extra: extract)
 
 Dependency-license note (not legal advice): OpenReagent deliberately avoids
 linking, at import time, against any copyleft-licensed analysis framework so

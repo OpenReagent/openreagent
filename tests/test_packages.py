@@ -1,5 +1,5 @@
 """The package system: discovery, dependency order, install (dir + zip),
-in-package references, and ad-hoc directory loading."""
+and ad-hoc loading."""
 from __future__ import annotations
 
 import json
@@ -9,17 +9,19 @@ from pathlib import Path
 from openreagent import packages
 from openreagent.recipes import get_recipe
 
+# A demo recipe package that reuses the built-in ``bytecode-hash`` shape, so it
+# declares a real ``requires`` edge (shape provider must load first).
 _DEMO_DETECTOR = '''
-from openreagent.matching import site_targets, slot
-from openreagent.recipes import Matcher, Recipe, Status, register_recipe
-from openreagent.recipe_lib import SlotFillExtractor
+from openreagent.recipes import Extractor, Matcher, Recipe, Status, register_recipe
 from openreagent.shapes import ShapeRef
 
 
-class DemoExtractor(SlotFillExtractor):
-    impl = "demo-fill"
+class DemoExtractor(Extractor):
+    impl = "demo"
     version = "1.0.0"
-    slot_keys = ("site",)
+
+    def extract(self, source):
+        return {"digest": "ab" * 32, "normalization": "demo"}
 
 
 class DemoMatcher(Matcher):
@@ -32,7 +34,7 @@ class DemoMatcher(Matcher):
 
 register_recipe(Recipe(
     name="demo-detector", version="1.0.0",
-    shape=ShapeRef(name="slot-spec", version="1.0.0"),
+    shape=ShapeRef(name="bytecode-hash", version="1.0.0"),
     extractor=DemoExtractor(), matcher=DemoMatcher(),
     status=Status.EXPERIMENTAL, note="demo package",
 ))
@@ -43,7 +45,7 @@ def _make_demo_pkg(directory: Path, name: str = "demo-detector") -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     (directory / "openreagent.json").write_text(json.dumps({
         "name": name, "version": "1.0.0", "kind": "recipe",
-        "entry": "detector.py", "requires": ["slot-spec"],
+        "entry": "detector.py", "requires": ["bytecode-hash"],
         "description": "demo", "provides": {"recipes": [name]},
     }))
     (directory / "detector.py").write_text(_DEMO_DETECTOR.replace("demo-detector", name))
@@ -52,28 +54,11 @@ def _make_demo_pkg(directory: Path, name: str = "demo-detector") -> Path:
 
 def test_discover_builtin_packages():
     pkgs = packages.discover()
-    for expected in ("slot-spec", "internal-absence", "canonical-divergence",
-                     "bytecode-hash", "ast-sketch"):
+    for expected in ("bytecode-hash", "ast-sketch"):
         assert expected in pkgs, expected
-    assert pkgs["slot-spec"].kind == "shape"
 
 
-def test_resolve_order_shape_before_recipe():
-    pkgs = packages.discover()
-    order = [p.name for p in packages.resolve_order(pkgs)]
-    assert order.index("slot-spec") < order.index("internal-absence")
-    assert order.index("slot-spec") < order.index("canonical-divergence")
-
-
-def test_references_bundled_in_package():
-    pkgs = packages.discover()
-    cd = pkgs["canonical-divergence"]
-    assert (cd.directory / "references" / "uniswap_v2" / "twap_price.json").is_file()
-    # There is no global references directory anymore.
-    assert "references" not in pkgs
-
-
-def test_install_from_local_dir(tmp_path, monkeypatch):
+def test_install_and_resolve_order(tmp_path, monkeypatch):
     home = tmp_path / "home"
     monkeypatch.setenv("OPENREAGENT_HOME", str(home))
     pkg = _make_demo_pkg(tmp_path / "demo-detector")
@@ -82,8 +67,11 @@ def test_install_from_local_dir(tmp_path, monkeypatch):
     assert any(p.name == "demo-detector" for p in installed)
     assert (home / "packages" / "demo-detector" / "openreagent.json").is_file()
 
-    disc = packages.discover()
-    assert "demo-detector" in disc and disc["demo-detector"].origin == "installed"
+    pkgs = packages.discover()
+    assert "demo-detector" in pkgs and pkgs["demo-detector"].origin == "installed"
+    # A package's `requires` (its shape provider) loads before it.
+    order = [p.name for p in packages.resolve_order(pkgs)]
+    assert order.index("bytecode-hash") < order.index("demo-detector")
 
     packages.load(force=True)
     assert get_recipe("demo-detector") is not None

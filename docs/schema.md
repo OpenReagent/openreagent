@@ -62,12 +62,7 @@ Shape := { name: string, version: semver, fields: FieldDecl }
 fields := { digest: hex(32), normalization: string }
 
 # ast-sketch/v1
-fields := { ngram: int, minhash: uint64[K] }
-
-# slot-spec/v1     (no detector-identity field — the recipe is the identity)
-fields := { slots: { operation?, attribute?, operator?, site?,
-                     intended_order?, canonical_reference?, ... },
-            freeform: string? }
+fields := { ngram: int, minhash: uint64[K], basis: string }
 ```
 
 Shapes are modelled as pydantic types and registered with
@@ -90,18 +85,16 @@ Recipe := {
 }
 ```
 
-Two invariants, both enforced in code: **no LLM at matching time** (extraction
-may use one, offline, flagged by `extractor.uses_llm`); and **matcher and
-extractor operate on the recipe's shape**.
+Two invariants, both enforced in code: **no LLM at matching time** (and, today,
+**none at extraction either** — every recipe is deterministic and hashable); and
+**matcher and extractor operate on the recipe's shape**.
 
 ### B.3 Each detector is its own recipe
 
 Detectors do not share one matcher. Each detector has its own extraction method
-and its own detection algorithm, so each is its own recipe over a shared shape.
-The recipe identity *is* the detector, which is why a value carries no
-detector-identity field, and why cross-project propagation is per-recipe. The
-slot-based detectors share the `slot-spec` shape; a finding that is expressible
-but fits no specific detector uses the `generic-slot` recipe.
+and its own detection algorithm, so each is its own recipe over its shape. The
+recipe identity *is* the detector, which is why a value carries no
+detector-identity field, and why cross-project propagation is per-recipe.
 
 Registry today (open, expected to grow). The `status` column is a **maturity
 label only** — never a precision or CI figure:
@@ -109,21 +102,12 @@ label only** — never a precision or CI figure:
 ```
 recipe                  shape             extractor (impl)         matcher (impl)               status        what it surfaces
 ----------------------- ----------------- ------------------------ ---------------------------- ------------- -----------------------------
-internal-absence        slot-spec/v1      slot-fill (llm)          absence-detector             production     a required element absent at a site
-canonical-divergence    slot-spec/v1      slot-fill (llm)          canonical-ref-detector       production     divergence from a canonical reference
-operand-mismatch        slot-spec/v1      slot-fill (llm)          operand-detector             experimental   wrong operand attribute
-operator-direction      slot-spec/v1      slot-fill (llm)          operator-detector            experimental   comparison points the wrong way
-unbound-caller-value    slot-spec/v1      slot-fill (llm)          binding-detector             experimental   caller value used without a bound
-ordering-violation      slot-spec/v1      slot-fill (llm)          ordering-detector            experimental   two operations in the wrong order
-aggregated-state        slot-spec/v1      slot-fill (llm)          aggregate-detector           experimental   aggregate vs keyed state mismatch
-generic-slot            slot-spec/v1      slot-fill (llm)          generic-slot-matcher         experimental   expressible, unclassified fallback
 bytecode-hash           bytecode-hash/v1  normalize+keccak (no)    hash-equality                journey        exact / near-exact clones
 ast-sketch              ast-sketch/v1     flatten+minhash (no)     minhash-sim { tau }          journey        lightly modified near-duplicates
 ```
 
-> Journey note, not part of the fixed schema. `bytecode-hash` was effective on
-> exact and near-exact clones, `ast-sketch` on lightly modified ones. They stay
-> as cheap deterministic recipes, off by default — not as a taxonomy.
+> Both are cheap, deterministic clone recipes, off by default. Further hashable
+> clone/signature recipes are planned (see [roadmap.md](roadmap.md)).
 
 ---
 
@@ -146,34 +130,27 @@ ast-sketch              ast-sketch/v1     flatten+minhash (no)     minhash-sim {
 }
 ```
 
-### C.2 canonical-divergence record (two sources)
+### C.2 ast-sketch record (two sources)
 
 ```json
 {
-  "id": "sig-amm-spot",
-  "recipe": { "name": "canonical-divergence", "version": "1.0.0" },
-  "value": {
-    "slots": {
-      "operation": "amm_spot_price_read",
-      "site": { "function": "getPrice", "file": "PriceOracle.sol" },
-      "canonical_reference": "uniswap_v2/twap"
-    },
-    "freeform": null
-  },
+  "id": "sig-sketch-amm",
+  "recipe": { "name": "ast-sketch", "version": "1.0.0" },
+  "value": { "ngram": 5, "minhash": [12, 7, 99, "…"], "basis": "ast" },
   "provenance": [
-    { "source_kind": "audit_report", "source_ref": "<contest>-H-05",
-      "extracted_by": { "recipe": "canonical-divergence", "version": "1.0.0",
+    { "source_kind": "source_contract", "source_ref": "PriceOracle.sol@0xabc...123",
+      "extracted_by": { "recipe": "ast-sketch", "version": "1.0.0",
                         "timestamp": "2026-05-10T00:00:00Z" },
       "reviewer": "reviewer-id" },
-    { "source_kind": "audit_report", "source_ref": "<contest>-H-13",
-      "extracted_by": { "recipe": "canonical-divergence", "version": "1.1.0",
+    { "source_kind": "source_contract", "source_ref": "PriceOracleV2.sol@0xdef...456",
+      "extracted_by": { "recipe": "ast-sketch", "version": "1.1.0",
                         "timestamp": "2026-05-18T00:00:00Z" } }
   ]
 }
 ```
 
-The value has no detector-identity field; the recipe `canonical-divergence` is
-the identity. The two provenance records show the same signature evidenced by two
+The value has no detector-identity field; the recipe `ast-sketch` is the
+identity. The two provenance records show the same signature evidenced by two
 findings under two recipe versions.
 
 ---
