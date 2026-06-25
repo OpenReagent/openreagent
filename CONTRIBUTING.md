@@ -59,7 +59,8 @@ pytest                       # the full suite, including:
                              #  - package discovery, dependency order, install (dir + zip)
                              #  - recipe isolation
                              #  - end-to-end on the Solidity fixtures
-                             #  - the SQLite signature store and scan --store
+                             #  - the server + client end-to-end (needs the `server` extra)
+                             #  - the PostgreSQL store backend (set OPENREAGENT_TEST_DB_URL)
 ```
 
 ## Review expectations

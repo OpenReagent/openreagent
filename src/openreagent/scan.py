@@ -121,13 +121,30 @@ def scan(
     code = CodeView(sources, build_result)
     active = enabled_recipe_set(enable, disable)
 
-    entries: list[PoolEntry] = load_pool(pool, store=store)
-    # Deterministic processing order.
-    entries = sorted(entries, key=lambda e: e.signature.id)
+    if store is not None and store is not False:
+        # Remote store: match against the server (the PSI seam) — never download
+        # the signature set, never send code; only candidate fingerprints.
+        findings, skipped, pool_size = _scan_via_server(code, active, store)
+    else:
+        # Local pool: a directory/file of signature records, matched in-process.
+        findings, skipped, pool_size = _scan_local_pool(pool, code, active)
 
+    findings.sort(key=lambda f: (f.file, f.line, f.recipe, f.function, f.signature_id))
+    return ScanReport(
+        findings=findings,
+        enabled_recipes=[r.name for r in active.values()],
+        pool_size=pool_size,
+        files_scanned=len(sources),
+        skipped=skipped,
+        target=target_info,
+        build=build_result,
+    )
+
+
+def _scan_local_pool(pool, code, active) -> tuple[list[Finding], list[dict], int]:
+    entries: list[PoolEntry] = sorted(load_pool(pool), key=lambda e: e.signature.id)
     findings: list[Finding] = []
     skipped: list[dict] = []
-
     for entry in entries:
         sig = entry.signature
         recipe = get_recipe(sig.recipe.name, sig.recipe.version)
@@ -136,24 +153,48 @@ def scan(
                             "recipe": f"{sig.recipe.name}@{sig.recipe.version}"})
             continue
         if recipe.name not in active:
-            skipped.append({"signature": sig.id, "reason": "recipe disabled",
-                            "recipe": recipe.name})
+            skipped.append({"signature": sig.id, "reason": "recipe disabled", "recipe": recipe.name})
             continue
         try:
-            matched = recipe.matcher.match(sig.value, code, sig)
+            findings.extend(recipe.matcher.match(sig.value, code, sig))
         except Exception as exc:  # a single bad signature must not abort the scan
             skipped.append({"signature": sig.id, "reason": f"matcher error: {exc}",
                             "recipe": recipe.name})
-            continue
-        findings.extend(matched)
+    return findings, skipped, len(entries)
 
-    findings.sort(key=lambda f: (f.file, f.line, f.recipe, f.function, f.signature_id))
-    return ScanReport(
-        findings=findings,
-        enabled_recipes=[r.name for r in active.values()],
-        pool_size=len(entries),
-        files_scanned=len(sources),
-        skipped=skipped,
-        target=target_info,
-        build=build_result,
-    )
+
+def _scan_via_server(code, active, store) -> tuple[list[Finding], list[dict], int]:
+    from openreagent import matchlib
+    from openreagent.client import OpenReagentClient
+    from openreagent.matching import tier_for
+
+    client = OpenReagentClient(None if store is True else store)
+    candidates: dict[str, list[dict]] = {}
+    labels: dict[str, list[str]] = {}
+    for recipe in active.values():
+        cv = matchlib.candidate_values(recipe, code)
+        if not cv:
+            continue
+        labels[recipe.name] = [label for label, _ in cv]
+        candidates[recipe.name] = [value for _, value in cv]
+
+    findings: list[Finding] = []
+    matches = client.match(candidates) if candidates else []
+    for m in matches:
+        rn = m.get("recipe", "")
+        idx = int(m.get("candidate", -1))
+        label = labels.get(rn, [""])[idx] if 0 <= idx < len(labels.get(rn, [])) else ""
+        file, _, function = label.partition("#")
+        recipe = active.get(rn)
+        score = float(m.get("score", 1.0))
+        findings.append(Finding(
+            recipe=rn, recipe_version=recipe.version if recipe else "?",
+            signature_id=m.get("signature_id", "?"),
+            file=file or "?", function=function, line=1,
+            tier=tier_for(score) or "HIGH", score=round(score, 3),
+            message=f"matched signature {m.get('signature_id', '?')} in the remote store "
+                    f"(score {score:.2f})",
+            details={"score": round(score, 3), "via": "server"},
+        ))
+    pool_size = sum(len(v) for v in candidates.values())  # candidate fingerprints queried
+    return findings, [], pool_size

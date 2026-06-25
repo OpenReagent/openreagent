@@ -46,18 +46,15 @@ def _pool_files(pool: str | Path | None) -> list[Path]:
     return []
 
 
-def load_pool(pool: str | Path | None = None, strict: bool = True,
-              store=None) -> list[PoolEntry]:
-    """Load a pool of signatures.
+def load_pool(pool: str | Path | None = None, strict: bool = True) -> list[PoolEntry]:
+    """Load a file pool of signatures and match it **in-process**.
 
-    ``store`` takes precedence over ``pool``: pass ``True`` for the default
-    SQLite store, a path/``SignatureStore`` for a specific one. Otherwise ``pool``
-    is a directory or file of ``*.json`` signature records (default: the shipped
-    sample pool).
+    ``pool`` is a directory or file of ``*.json`` signature records (default: the
+    shipped sample pool). This path never touches the remote store: signatures
+    held by the server are matched through it (``scan --store``), not loaded here.
+    Clients never read the database directly.
     """
     loader.load_builtins()
-    if store is not None and store is not False:
-        return _load_from_store(store, strict)
     entries: list[PoolEntry] = []
     for path in _pool_files(pool):
         try:
@@ -75,26 +72,6 @@ def load_pool(pool: str | Path | None = None, strict: bool = True,
         _check_shape(path, sig, strict)
         entries.append(PoolEntry(signature=sig, source_path=str(path)))
     return entries
-
-
-def _load_from_store(store, strict: bool) -> list[PoolEntry]:
-    from openreagent.store import SignatureStore
-
-    own = False
-    if isinstance(store, SignatureStore):
-        st = store
-    else:
-        st = SignatureStore(None if store is True else store)
-        own = True
-    try:
-        entries: list[PoolEntry] = []
-        for sig in st.signatures():
-            _check_shape(Path(f"store:{st.path}"), sig, strict)
-            entries.append(PoolEntry(signature=sig, source_path=f"store:{st.path}#{sig.id}"))
-        return entries
-    finally:
-        if own:
-            st.close()
 
 
 def _check_shape(path: Path, sig: Signature, strict: bool) -> None:

@@ -3,7 +3,7 @@
 OpenReagent has two layers — a small, stable **record** and an open **registry**
 of shapes and recipes — and two paths over them: **scan** (deterministic, no LLM)
 and **extract** (offline, deterministic). The registry is distributed as
-installable **packages**, and signatures live in a local **store**. This document
+installable **packages**, and signatures live in a remote **store**. This document
 walks the components, traces each path end to end, and shows how a package plugs
 in.
 
@@ -17,8 +17,11 @@ openreagent/
   packages.py      the package system: manifest, discovery, dependency-ordered load, install
   sources.py       fetch sources from local path, zip, http(s) zip, github:owner/repo
   loader.py        thin facade: load the whole registry, resolve the sample pool
-  store.py         SQLite signature store + parse/pull of remote signatures
-  pool.py          load a pool from a directory, a file, or the store
+  client.py        stdlib HTTP client for the server
+  server.py        the server: FastAPI app over the store, incl. /match
+  matchlib.py      server-side match primitives: candidate enumeration + compare
+  store.py         the server's PostgreSQL backend + parse/pull helpers
+  pool.py          load a pool from a directory or a file (in-process matching)
   solidity.py      dependency-free Solidity reader 
   frameworks.py    deterministic build-framework detection (Foundry/Hardhat/Vanilla)
   building.py      arm's-length build (forge/hardhat/solc) -> Bytecode/AST/ABI artifacts
@@ -82,8 +85,9 @@ was not built (no toolchain, offline, partial code) there are no artifacts and t
 recipe falls back to the lexical Code view. The lexical reader (`solidity.py`) is
 thus the **fallback**, not the primary structural source.
 
-The pool comes either from a directory/file of JSON records or from the SQLite
-store (`--store`). Properties that hold by construction:
+The pool comes either from a directory/file of JSON records (matched in-process)
+or, with `--store`, from a remote **server** the client queries (see below).
+Properties that hold by construction:
 
 - **Deterministic.** Sources and pool are processed in sorted order; every
   matcher is a pure function of `(value, code)`; output is sorted and carries no
@@ -102,21 +106,40 @@ store (`--store`). Properties that hold by construction:
 source (json: contract / build artifact) ─> recipe.extractor.extract(source) ─> value
 value ─> shape.validate(value)                              (must conform)
       ─> assemble Signature with provenance.extracted_by{recipe,version,timestamp}
-      ─> write signature .json  and/or  add to the store
+      ─> write signature .json  and/or  send to the server
 ```
 
 Extraction is **deterministic and offline**: it reduces the source to the
 recipe's hashable value (e.g. a normalized digest or a MinHash signature) with no
 LLM. The same source yields the same value every run.
 
-## The signature store
+## The server, the store, and the PSI seam
 
-`store.py` is a SQLite-backed collection of signature records
-(`$OPENREAGENT_HOME/signatures.db`). It validates a value against its recipe's
-shape on insert (the same check the file pool does at load), can be scanned
-directly (`scan --store`), and can be filled from a remote source — a JSON/JSONL
-URL, a zip, a GitHub repo, or a local directory — via `sig pull`. See
-[storage.md](storage.md).
+Signatures live behind a **server** (`server.py`), not on the client. The split
+is the whole point: it is what lets matching become privacy-preserving without
+rewriting the client.
+
+```
+  client (CLI / scan)  ──HTTP──▶  server.py  ──▶  store.py ──▶ PostgreSQL
+   client.py                      FastAPI app       pg8000
+   candidate fingerprints   ──▶   POST /match  ──▶  compare (matchlib)
+   matches only             ◀──                ◀──  vs stored values
+```
+
+- **`client.py`** is stdlib-only and ships in the core — talking to a server
+  needs no extra. It is configured by `OPENREAGENT_SERVER_URL` (and an optional
+  `OPENREAGENT_SERVER_TOKEN`).
+- **`server.py`**  xposes signature CRUD and `POST /match`. It is the only
+  component that reads `OPENREAGENT_DB_URL`.
+- **`store.py`** is the server's PostgreSQL backend.
+  It validates a value against its recipe's shape on insert (the same check the
+  file pool does at load) and can be filled from a remote source — a JSON/JSONL
+  URL, a zip, a GitHub repo, or a local directory — via `sig pull`.
+- **`matchlib.py`** holds the server-side primitives: `candidate_values`and `compare`.
+
+`scan --store` never downloads the signature set and never uploads code: the
+client derives candidate fingerprints locally, sends them to `/match`, and gets
+back only the matches. See [storage.md](storage.md) and [open-questions.md](open-questions.md).
 
 ## How a package plugs in
 

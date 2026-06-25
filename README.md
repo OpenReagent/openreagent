@@ -11,29 +11,31 @@ look closer.
 
 The framework is the product. Detectors and shapes are distributed as
 installable **packages** (a small registry, like "npm for detectors and
-shapes"), and signatures live in a local store you can sync from a remote
-source.
+shapes"), and signatures live behind a remote server you match against without
+downloading them.
 
 ## Install
 
 ```bash
-pip install openreagent                 # core (scan, extract scaffolding, CLI, store)
-pip install 'openreagent[bytecode]'     # + the bytecode-hash clone recipe
+pip install openreagent                 # core (scan a file/dir pool, extract, CLI)
+pip install 'openreagent[bytecode]'     # + bytecode recipes (solc, pyevmasm)
 pip install 'openreagent[sketch]'       # + the ast-sketch near-duplicate recipe
+pip install 'openreagent[server,store]' # + run a server (FastAPI/uvicorn + pg8000)
 pip install 'openreagent[all]'          # everything
 ```
 
 Python 3.11+ is required. The core scan path has only three dependencies
-(`pydantic`, `typer`, `rich`) and runs anywhere; heavier libraries used by
-individual recipes or by extraction are optional extras.
+(`pydantic`, `typer`, `rich`) and runs anywhere — including the **client** that
+talks to a server, which is stdlib-only. Heavier libraries used by individual
+recipes, or to *run* a server, are optional extras.
 
 ## How detection works (the scan path)
 
 Detection is a pool of signatures run against your code:
 
-1. OpenReagent loads the **pool** — a directory of signature records *or* the
-   local signature store — and validates every signature against its recipe's
-   shape.
+1. OpenReagent loads the **pool** — a directory of signature records (matched
+   in-process) *or*, with `--store`, queries a remote **server** that holds the
+   signatures — validating every signature against its recipe's shape.
 2. For each signature whose recipe is enabled, the recipe's **matcher** runs
    over the target Solidity. Each matcher is a deterministic function of
    `(signature value, code)`. **No matcher uses an LLM.**
@@ -49,7 +51,7 @@ openreagent scan ./contracts                       # default pool + production r
 openreagent scan ./contracts -f sarif -o out.sarif # SARIF to a file
 openreagent scan ./contracts --enable '*'          # enable every recipe
 openreagent scan ./contracts --pool ./mypool       # use a directory pool
-openreagent scan ./contracts --store               # use the local signature store
+openreagent scan ./contracts --store               # match against the remote server
 ```
 
 ## Detectors and shapes are installable packages
@@ -85,21 +87,36 @@ openreagent extract finding.json --recipe bytecode-hash -o sig.json
 openreagent extract finding.json --recipe ast-sketch --to-store
 ```
 
-## The signature store
+## The server (and its store)
 
-Signatures live in a local SQLite store (`$OPENREAGENT_HOME/signatures.db`). Add
-them locally or pull a shared set from a remote source, then scan against the
-store:
+Signatures live behind a **remote server**. Clients talk to the server over
+HTTP and never touch the database; the server keeps signatures in PostgreSQL.
+This split is deliberate: the server's `POST /match` endpoint is the seam where
+a **privacy-preserving** (PSI) protocol will later replace plaintext comparison,
+so a client need not download the signature set and the server need not see the
+client's code.
+
+Clients only set a URL (the client is stdlib-only, no extra):
 
 ```bash
+export OPENREAGENT_SERVER_URL=http://localhost:8000
 openreagent sig add sig.json                  # add a record (or a dir of them)
-openreagent sig pull https://host/sigs.json   # fetch remote signatures into the store
-openreagent sig pull github:owner/sig-repo    # …or from a GitHub repo of records
+openreagent sig pull github:owner/sig-repo    # fetch signatures into the server
 openreagent sig list                          # list stored signatures
-openreagent scan ./contracts --store          # scan against the store
+openreagent scan ./contracts --store          # match against the server
 ```
 
-See [docs/storage.md](docs/storage.md).
+Run a server (needs the `server` + `store` extras and a database; a
+`docker-compose.yml` is bundled):
+
+```bash
+docker compose up -d
+export OPENREAGENT_DB_URL=postgresql://openreagent:openreagent@localhost:5432/openreagent
+openreagent serve --port 8000
+```
+
+For a quick, server-free run, scan a directory pool instead:
+`scan ./contracts --pool ./mypool`. See [docs/storage.md](docs/storage.md).
 
 ## Schema in one minute
 
@@ -122,7 +139,8 @@ record. Each detector is its own recipe over a shared shape — the recipe ident
 | `uninstall <name>` | remove an installed package |
 | `packages` | list built-in and installed packages |
 | `recipes` | list registered recipes with maturity status |
-| `sig add/pull/list/remove/clear` | manage the local signature store |
+| `serve` | run the OpenReagent server (the store API; needs `server`+`store` extras) |
+| `sig add/pull/list/remove/clear` | manage signatures on the remote server |
 | `validate <file>` | check a signature value against its recipe's shape |
 
 Run `openreagent <command> --help` for all options.

@@ -32,12 +32,19 @@ dependencies = [
 bytecode = ["py-solc-x>=2.0", "eth-hash[pycryptodome]>=0.6", "pyevmasm>=0.2.3"]
 # Recipes that build AST/opcode sketches (e.g. ast-sketch).
 sketch = ["datasketch>=1.6"]
+# The remote signature store backend (PostgreSQL via the pure-Python pg8000 driver).
+store = ["pg8000>=1.30"]
+# The OpenReagent server (the store API; the client itself needs no extra).
+server = ["fastapi>=0.110", "uvicorn>=0.29"]
 # Everything an integrator might want.
 all = [
     "py-solc-x>=2.0",
     "eth-hash[pycryptodome]>=0.6",
     "pyevmasm>=0.2.3",
     "datasketch>=1.6",
+    "pg8000>=1.30",
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
 ]
 dev = ["pytest>=7.4"]
 

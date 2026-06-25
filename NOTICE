@@ -28,6 +28,9 @@ Optional extras (installed only when the corresponding feature is used):
   - eth-hash            MIT License        (extra: bytecode)
   - pyevmasm            Apache-2.0 License (extra: bytecode)
   - datasketch          MIT License        (extra: sketch)
+  - pg8000              BSD-3-Clause       (extra: store)
+  - fastapi             MIT License        (extra: server)
+  - uvicorn             BSD-3-Clause       (extra: server)
 
 Dependency-license note (not legal advice): OpenReagent deliberately avoids
 linking, at import time, against any copyleft-licensed analysis framework so

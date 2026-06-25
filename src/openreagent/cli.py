@@ -1,8 +1,8 @@
 """The ``openreagent`` command-line interface.
 
 Paths:
-  scan <path>        load pool, run matchers, emit findings (deterministic, no LLM)
-  extract <finding>  offline; may use an LLM; writes a signature record
+  scan <path>        load pool/store, run matchers, emit findings (deterministic, no LLM)
+  extract <finding>  offline, deterministic; writes a signature record
 
 Registry (the package system — "npm for detectors and shapes"):
   install <source>   install a detector/shape package (dir, zip, url, github:owner/repo)
@@ -10,16 +10,19 @@ Registry (the package system — "npm for detectors and shapes"):
   packages           list built-in + installed packages
   recipes            list registered recipes with maturity status
 
-Signature store (local SQLite + remote pull):
-  sig add <file>     add signature(s) to the local store
+Remote store (a server in front of the database — set OPENREAGENT_SERVER_URL):
+  serve              run the OpenReagent server (the store API; needs server+store extras)
+  sig add <file>     add signature(s) to the remote server
   sig list           list stored signatures
-  sig pull <source>  fetch signatures from a remote/local source into the store
+  sig pull <source>  fetch signatures from a remote/local source into the server
   sig remove <id>    delete a stored signature
   sig clear          empty the store
 
   validate <file>    check a signature value against its recipe's shape
 
-``scan`` and the registry/listing commands import no LLM client.
+Clients talk to the server, not the database; ``scan --store`` matches via the
+server's ``/match`` endpoint (the seam for future PSI). ``scan`` and the
+registry/listing commands use no LLM.
 """
 from __future__ import annotations
 
@@ -40,7 +43,7 @@ app = typer.Typer(
     help="OpenReagent — recipe-based matching of recurring smart-contract vulnerabilities.",
     no_args_is_help=True,
 )
-sig_app = typer.Typer(add_completion=False, help="Manage the local signature store.", no_args_is_help=True)
+sig_app = typer.Typer(add_completion=False, help="Manage signatures on the remote server (the store API).", no_args_is_help=True)
 app.add_typer(sig_app, name="sig")
 console = Console()
 err = Console(stderr=True)
@@ -55,8 +58,8 @@ def scan(
     path: str = typer.Argument(..., help="A .sol file or a directory of Solidity."),
     fmt: str = typer.Option("markdown", "--format", "-f", help="json | sarif | markdown"),
     pool: Optional[str] = typer.Option(None, "--pool", "-p", help="Pool dir/file (default: shipped pool)."),
-    use_store: bool = typer.Option(False, "--store", help="Use the default SQLite signature store as the pool."),
-    store_db: Optional[str] = typer.Option(None, "--store-db", help="Use a specific SQLite store file as the pool."),
+    use_store: bool = typer.Option(False, "--store", help="Match against the remote server (OPENREAGENT_SERVER_URL)."),
+    server_url: Optional[str] = typer.Option(None, "--server-url", help="OpenReagent server URL override (http://...); implies --store."),
     enable: List[str] = typer.Option([], "--enable", "-e", help="Enable a recipe by name ('*' for all)."),
     disable: List[str] = typer.Option([], "--disable", "-d", help="Disable a recipe by name."),
     recipe_dir: List[str] = typer.Option([], "--recipe-dir", help="Load extra packages from a directory."),
@@ -67,6 +70,7 @@ def scan(
     output: Optional[str] = typer.Option(None, "--output", "-o", help="Write to a file instead of stdout."),
 ):
     """Scan code against the pool. Deterministic; never calls an LLM."""
+    from openreagent.client import ServerConfigError, ServerError
     from openreagent.formatters import format_report
     from openreagent.frameworks import Framework
     from openreagent.scan import scan as run_scan
@@ -78,10 +82,14 @@ def scan(
             err.print(f"[red]unknown framework[/red] {framework!r}; expected foundry | hardhat | vanilla")
             raise typer.Exit(code=1)
 
-    store = store_db if store_db else (True if use_store else None)
-    report = run_scan(path, pool=pool, enable=list(enable), disable=list(disable),
-                      recipe_dirs=list(recipe_dir), store=store, framework=framework,
-                      do_build=not no_build, install_toolchain=install)
+    store = server_url if server_url else (True if use_store else None)
+    try:
+        report = run_scan(path, pool=pool, enable=list(enable), disable=list(disable),
+                          recipe_dirs=list(recipe_dir), store=store, framework=framework,
+                          do_build=not no_build, install_toolchain=install)
+    except (ServerConfigError, ServerError) as exc:
+        err.print(f"[red]server:[/red] {exc}")
+        raise typer.Exit(code=1)
 
     if debug and report.build is not None:
         b = report.build
@@ -104,7 +112,7 @@ def extract(
     signature_id: Optional[str] = typer.Option(None, "--id", help="Signature id (default: derived)."),
     reviewer: Optional[str] = typer.Option(None, "--reviewer", help="Reviewer to record in provenance."),
     output: Optional[str] = typer.Option(None, "--output", "-o", help="Write the signature here."),
-    to_store: bool = typer.Option(False, "--to-store", help="Also add the signature to the local store."),
+    to_store: bool = typer.Option(False, "--to-store", help="Also send the signature to the remote server (OPENREAGENT_SERVER_URL)."),
 ):
     """Turn an audit finding into a signature record. Offline and deterministic."""
     from openreagent.extract import extract_signature, write_signature
@@ -119,10 +127,13 @@ def extract(
         write_signature(sig, output)
         err.print(f"[green]Wrote signature {sig.id} to {output}[/green]")
     if to_store:
-        from openreagent.store import SignatureStore
+        from openreagent.client import OpenReagentClient, ServerConfigError, ServerError
 
-        with SignatureStore() as st:
-            st.add(sig)
+        try:
+            OpenReagentClient().add([sig])
+        except (ServerConfigError, ServerError) as exc:
+            err.print(f"[red]server:[/red] {exc}")
+            raise typer.Exit(code=1)
         err.print(f"[green]Added {sig.id} to the store[/green]")
     if not output and not to_store:
         print(json.dumps(sig.to_dict(), indent=2, sort_keys=True))
@@ -340,62 +351,76 @@ def recipes(as_json: bool = typer.Option(False, "--json", help="Emit JSON instea
 # signature store
 # ---------------------------------------------------------------------------
 
-@sig_app.command("add")
-def sig_add(
-    source: str = typer.Argument(..., help="A signature JSON/JSONL file (or a dir of them)."),
-    db: Optional[str] = typer.Option(None, "--db", help="Store path (default: ~/.openreagent/signatures.db)."),
-):
-    """Add signature(s) to the local store."""
-    from openreagent.store import SignatureStore, signatures_from_source
+_SERVER_OPT = typer.Option(None, "--server-url", help="Server URL (default: $OPENREAGENT_SERVER_URL).")
 
-    sigs = signatures_from_source(source)
+
+def _client(server_url):
+    """Build a server client, turning a missing-config into a clean exit."""
+    from openreagent.client import OpenReagentClient, ServerConfigError
+
+    try:
+        return OpenReagentClient(server_url)
+    except ServerConfigError as exc:
+        err.print(f"[red]server:[/red] {exc}")
+        raise typer.Exit(code=1)
+
+
+def _push(source, server_url, *, verb):
+    from openreagent.client import ServerError
+    from openreagent.store import signatures_from_source
+
+    try:
+        sigs = signatures_from_source(source)
+    except Exception as exc:
+        err.print(f"[red]{verb} failed:[/red] {exc}")
+        raise typer.Exit(code=1)
     if not sigs:
         err.print(f"[yellow]no signatures found in[/yellow] {source}")
         raise typer.Exit(code=1)
-    with SignatureStore(db) as st:
-        try:
-            n = st.add_many(sigs)
-        except Exception as exc:
-            err.print(f"[red]add failed:[/red] {exc}")
-            raise typer.Exit(code=1)
-    console.print(f"[green]added {n} signature(s) to the store[/green]")
+    client = _client(server_url)
+    try:
+        n = client.add(sigs)
+    except ServerError as exc:
+        err.print(f"[red]server:[/red] {exc}")
+        raise typer.Exit(code=1)
+    console.print(f"[green]{verb}ed {n} signature(s) to the server[/green]")
+
+
+@sig_app.command("add")
+def sig_add(
+    source: str = typer.Argument(..., help="A signature JSON/JSONL file (or a dir of them)."),
+    server_url: Optional[str] = _SERVER_OPT,
+):
+    """Add signature(s) to the remote server."""
+    _push(source, server_url, verb="add")
 
 
 @sig_app.command("pull")
 def sig_pull(
     source: str = typer.Argument(..., help="Remote/local source: URL to JSON/JSONL/zip, github:owner/repo, dir, file."),
-    db: Optional[str] = typer.Option(None, "--db", help="Store path."),
+    server_url: Optional[str] = _SERVER_OPT,
 ):
-    """Fetch signatures from a remote or local source into the store."""
-    from openreagent.store import SignatureStore, signatures_from_source
-
-    try:
-        sigs = signatures_from_source(source)
-    except Exception as exc:
-        err.print(f"[red]pull failed:[/red] {exc}")
-        raise typer.Exit(code=1)
-    if not sigs:
-        err.print(f"[yellow]no signatures found at[/yellow] {source}")
-        raise typer.Exit(code=1)
-    with SignatureStore(db) as st:
-        n = st.add_many(sigs)
-        total = st.count()
-    console.print(f"[green]pulled {n} signature(s)[/green]; store now holds {total}")
+    """Fetch signatures from a remote or local source into the server."""
+    _push(source, server_url, verb="pull")
 
 
 @sig_app.command("list")
 def sig_list(
     recipe: Optional[str] = typer.Option(None, "--recipe", help="Filter by recipe name."),
-    db: Optional[str] = typer.Option(None, "--db", help="Store path."),
+    server_url: Optional[str] = _SERVER_OPT,
     as_json: bool = typer.Option(False, "--json", help="Emit JSON."),
 ):
-    """List signatures in the store."""
-    from openreagent.store import SignatureStore
+    """List signatures in the server."""
+    from openreagent.client import ServerError
 
-    with SignatureStore(db) as st:
-        items = st.list(recipe)
+    client = _client(server_url)
+    try:
+        items = client.list(recipe)
+    except ServerError as exc:
+        err.print(f"[red]server:[/red] {exc}")
+        raise typer.Exit(code=1)
     if as_json:
-        print(json.dumps([s.signature.to_dict() for s in items], indent=2, sort_keys=True))
+        print(json.dumps([s.to_dict() for s in items], indent=2, sort_keys=True))
         return
     if not items:
         console.print("[dim]store is empty[/dim]")
@@ -404,22 +429,25 @@ def sig_list(
     table.add_column("Id", style="bold")
     table.add_column("Recipe")
     table.add_column("Version")
-    table.add_column("Added")
     for s in items:
-        table.add_row(s.signature.id, s.signature.recipe.name, s.signature.recipe.version, s.added_at)
+        table.add_row(s.id, s.recipe.name, s.recipe.version)
     console.print(table)
 
 
 @sig_app.command("remove")
 def sig_remove(
     signature_id: str = typer.Argument(..., help="Signature id to remove."),
-    db: Optional[str] = typer.Option(None, "--db", help="Store path."),
+    server_url: Optional[str] = _SERVER_OPT,
 ):
-    """Remove a signature from the store."""
-    from openreagent.store import SignatureStore
+    """Remove a signature from the server."""
+    from openreagent.client import ServerError
 
-    with SignatureStore(db) as st:
-        ok = st.remove(signature_id)
+    client = _client(server_url)
+    try:
+        ok = client.remove(signature_id)
+    except ServerError as exc:
+        err.print(f"[red]server:[/red] {exc}")
+        raise typer.Exit(code=1)
     if ok:
         console.print(f"[green]removed[/green] {signature_id}")
     else:
@@ -429,17 +457,41 @@ def sig_remove(
 
 @sig_app.command("clear")
 def sig_clear(
-    db: Optional[str] = typer.Option(None, "--db", help="Store path."),
+    server_url: Optional[str] = _SERVER_OPT,
     yes: bool = typer.Option(False, "--yes", help="Do not prompt."),
 ):
     """Empty the store."""
-    from openreagent.store import SignatureStore
+    from openreagent.client import ServerError
 
     if not yes:
         typer.confirm("Delete every signature in the store?", abort=True)
-    with SignatureStore(db) as st:
-        n = st.clear()
+    client = _client(server_url)
+    try:
+        n = client.clear()
+    except ServerError as exc:
+        err.print(f"[red]server:[/red] {exc}")
+        raise typer.Exit(code=1)
     console.print(f"[green]cleared {n} signature(s)[/green]")
+
+
+@app.command()
+def serve(
+    host: str = typer.Option("127.0.0.1", "--host", help="Bind address."),
+    port: int = typer.Option(8000, "--port", help="Port."),
+):
+    """Run the OpenReagent server (the remote store API).
+
+    Needs the ``server`` and ``store`` extras and a configured database
+    (``OPENREAGENT_DB_URL``): pip install 'openreagent[server,store]'.
+    """
+    try:
+        import uvicorn
+
+        from openreagent.server import create_app
+    except ImportError:
+        err.print("[red]serve needs the server extra:[/red] pip install 'openreagent[server,store]'")
+        raise typer.Exit(code=1)
+    uvicorn.run(create_app(), host=host, port=port)
 
 
 # ---------------------------------------------------------------------------
